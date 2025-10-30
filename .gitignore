@@ -1,0 +1,59 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Build folders
+/bin/
+/build/
+/dist/
+/tmp/
+/coverage/
+/vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Dependency directories
+/vendor/
+
+# Logs
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE/editor
+.vscode/
+.idea/
+*.iml
+
+# Environment files
+.env
+.env.local
+.env.*
+
+# Compiled objects
+*.a
+*.o
+
+# Coverage and test output
+coverage.out
+*.coverprofile
+
+# Config / cache
+.cache/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
