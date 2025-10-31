@@ -14,8 +14,8 @@ func NewCoverageController(s services.CoverageService) *CoverageController {
 	return &CoverageController{service: s}
 }
 
-func (c *CoverageController) RegisterRoutes(app *fiber.App) {
-	g := app.Group("/api/v1/coverages")
+func (c *CoverageController) RegisterRoutes(router fiber.Router) {
+	g := router.Group("/admin_api/coverages")
 	g.Post("/", c.Create)
 	g.Get("/", c.GetAll)
 	g.Get("/:id", c.GetByID)

@@ -53,11 +53,19 @@ func main() {
 	customerSvc := services.NewCustomerService(customerRepo)
 	customerCtrl := controllers.NewCustomerController(customerSvc)
 
+	subscriptionRepo := repositories.NewSubscriptionRepository(gormDB)
+	subscriptionSvc := services.NewSubscriptionService(subscriptionRepo)
+	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc)
+
+	billRepo := repositories.NewBillRepository(gormDB)
+	billSvc := services.NewBillService(billRepo)
+	billCtrl := controllers.NewBillController(billSvc)
+
 	// Setup Fiber
 	app := fiber.New()
 
 	// Register routes for all controllers
-	routes.Setup(app, coverageCtrl, userCtrl, packageCtrl, odcCtrl, odpCtrl, customerCtrl)
+	routes.Setup(app, coverageCtrl, userCtrl, packageCtrl, odcCtrl, odpCtrl, customerCtrl, subscriptionCtrl, billCtrl)
 
 	port := os.Getenv("PORT")
 	if port == "" {

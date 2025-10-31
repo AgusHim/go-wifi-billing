@@ -16,7 +16,7 @@ func NewSubscriptionController(service services.SubscriptionService) *Subscripti
 }
 
 func (c *SubscriptionController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/subscriptions")
+	r := router.Group("/admin_api/subscriptions")
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)

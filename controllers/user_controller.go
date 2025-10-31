@@ -14,8 +14,8 @@ func NewUserController(s services.UserService) *UserController {
 	return &UserController{service: s}
 }
 
-func (ctrl *UserController) RegisterRoutes(app *fiber.App) {
-	api := app.Group("/api/v1")
+func (ctrl *UserController) RegisterRoutes(router fiber.Router) {
+	api := router.Group("/api")
 
 	api.Post("/auth/register", ctrl.Register)
 	api.Post("/auth/login", ctrl.Login)

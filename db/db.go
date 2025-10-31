@@ -31,5 +31,15 @@ func AutoMigrate(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("db is nil")
 	}
-	return db.AutoMigrate(&models.Coverage{}, &models.Package{}, &models.User{}, &models.Odc{}, &models.Odp{}, &models.Customer{})
+	return db.AutoMigrate(
+		&models.Coverage{},
+		&models.Package{},
+		&models.User{},
+		&models.Odc{},
+		&models.Odp{},
+		&models.Customer{},
+		&models.Subscription{},
+		&models.Bill{},
+		&models.Payment{},
+	)
 }

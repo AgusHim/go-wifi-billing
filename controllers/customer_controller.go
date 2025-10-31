@@ -17,7 +17,7 @@ func NewCustomerController(service services.CustomerService) *CustomerController
 }
 
 func (c *CustomerController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/customers")
+	r := router.Group("/admin_api/customers")
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)
