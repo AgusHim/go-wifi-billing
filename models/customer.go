@@ -9,7 +9,6 @@ import (
 
 type Customer struct {
 	ID            uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
-	UserID        uuid.UUID      `json:"user_id" gorm:"type:uuid;not null"`
 	CoverageID    uuid.UUID      `json:"coverage_id" gorm:"type:uuid"`
 	OdcID         uuid.UUID      `json:"odc_id" gorm:"type:uuid"`
 	OdpID         uuid.UUID      `json:"odp_id" gorm:"type:uuid"`
@@ -32,7 +31,6 @@ type Customer struct {
 	DeletedAt     gorm.DeletedAt `json:"deleted_at" gorm:"index"`
 
 	// Relationships (optional preload)
-	User     *User     `json:"user" gorm:"foreignKey:UserID"`
 	Coverage *Coverage `json:"coverage" gorm:"foreignKey:CoverageID"`
 	Odc      *Odc      `json:"odc" gorm:"foreignKey:OdcID"`
 	Odp      *Odp      `json:"odp" gorm:"foreignKey:OdpID"`

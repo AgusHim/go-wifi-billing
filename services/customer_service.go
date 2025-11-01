@@ -41,7 +41,6 @@ func (s *customerService) Update(id uuid.UUID, input *models.Customer) error {
 		return err
 	}
 
-	existing.UserID = input.UserID
 	existing.CoverageID = input.CoverageID
 	existing.OdcID = input.OdcID
 	existing.OdpID = input.OdpID

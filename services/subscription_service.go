@@ -40,7 +40,7 @@ func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) e
 		return err
 	}
 
-	existing.CustomerID = input.CustomerID
+	existing.UserID = input.UserID
 	existing.PackageID = input.PackageID
 	existing.StartDate = input.StartDate
 	existing.EndDate = input.EndDate

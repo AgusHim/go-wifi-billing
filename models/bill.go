@@ -10,7 +10,7 @@ import (
 type Bill struct {
 	ID             uuid.UUID      `gorm:"type:uuid;primary_key" json:"id"`
 	SubscriptionID uuid.UUID      `gorm:"type:uuid" json:"subscription_id"`
-	CustomerID     uuid.UUID      `gorm:"type:uuid" json:"customer_id"`
+	UserID         uuid.UUID      `gorm:"type:uuid" json:"user_id"`
 	BillDate       time.Time      `json:"bill_date"`
 	DueDate        time.Time      `json:"due_date"`
 	TerminatedDate *time.Time     `json:"terminated_date"`
@@ -22,5 +22,5 @@ type Bill struct {
 	DeletedAt      gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 
 	Subscription Subscription `gorm:"foreignKey:SubscriptionID" json:"subscription"`
-	Customer     Customer     `gorm:"foreignKey:CustomerID" json:"customer"`
+	User         User         `gorm:"foreignKey:UserID" json:"user"`
 }
