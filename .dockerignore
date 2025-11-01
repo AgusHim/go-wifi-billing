@@ -1,0 +1,45 @@
+# Binaries
+main
+*.exe
+*.out
+*.app
+
+# Build artifacts
+/bin
+/build
+/dist
+/tmp
+*.log
+
+# Vendor (if using Go modules)
+vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Node / Frontend assets (if present)
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3

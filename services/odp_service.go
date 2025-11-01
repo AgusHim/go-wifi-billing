@@ -41,6 +41,7 @@ func (s *odpService) Update(id uuid.UUID, input *models.Odp) error {
 	}
 
 	existing.OdcID = input.OdcID
+	existing.Code = input.Code
 	existing.OdcPortNumber = input.OdcPortNumber
 	existing.CoverageID = input.CoverageID
 	existing.FoTubeColor = input.FoTubeColor

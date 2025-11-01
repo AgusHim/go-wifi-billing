@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    container_name: fiber_app
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "${APP_PORT}:8080"
+    environment:
+      - DB_HOST=${POSTGRES_HOST}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}
+      - DB_PORT=${POSTGRES_PORT}
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - .:/app
+    command: ./main # or `air` if using hot reload
+    working_dir: /app
+
+  db:
+    image: postgres:16-alpine
+    container_name: postgres_db
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

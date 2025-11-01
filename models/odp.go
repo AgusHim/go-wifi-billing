@@ -12,6 +12,7 @@ type Odp struct {
 	OdcID         uuid.UUID      `json:"odc_id" gorm:"type:uuid;not null"`
 	OdcPortNumber int            `json:"odc_port_number"`
 	CoverageID    uuid.UUID      `json:"coverage_id" gorm:"type:uuid;not null"`
+	Code          string         `json:"code"`
 	FoTubeColor   string         `json:"fo_tube_color"`
 	PoleNumber    string         `json:"pole_number"`
 	CountPort     int            `json:"count_port"`
