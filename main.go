@@ -10,12 +10,20 @@ import (
 	"github.com/Agushim/go_wifi_billing/routes"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load .env
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+
 	// Init DB (Postgres if POSTGRE_URL set, else SQLite)
 	dsn := os.Getenv("POSTGRE_URL")
-	gormDB, err := db.InitDB(dsn)
+	sqlitePath := os.Getenv("SQLITE_PATH")
+
+	var gormDB, err = db.InitDB(dsn, sqlitePath)
 	if err != nil {
 		log.Fatalf("failed to init db: %v", err)
 	}
