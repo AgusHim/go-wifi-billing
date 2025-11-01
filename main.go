@@ -6,6 +6,7 @@ import (
 
 	"github.com/Agushim/go_wifi_billing/controllers"
 	"github.com/Agushim/go_wifi_billing/db"
+	"github.com/Agushim/go_wifi_billing/db/seed"
 	"github.com/Agushim/go_wifi_billing/repositories"
 	"github.com/Agushim/go_wifi_billing/routes"
 	"github.com/Agushim/go_wifi_billing/services"
@@ -32,6 +33,8 @@ func main() {
 	if err := db.AutoMigrate(gormDB); err != nil {
 		log.Fatalf("migration failed: %v", err)
 	}
+	// Seed data
+	seed.Seed(gormDB)
 
 	// Init repository, service, controller
 	coverageRepo := repositories.NewCoverageRepository(gormDB)
@@ -54,11 +57,23 @@ func main() {
 	odpSvc := services.NewOdpService(odpRepo)
 	odpCtrl := controllers.NewOdpController(odpSvc)
 
+	customerRepo := repositories.NewCustomerRepository(gormDB)
+	customerSvc := services.NewCustomerService(customerRepo)
+	customerCtrl := controllers.NewCustomerController(customerSvc)
+
+	subscriptionRepo := repositories.NewSubscriptionRepository(gormDB)
+	subscriptionSvc := services.NewSubscriptionService(subscriptionRepo)
+	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc)
+
+	billRepo := repositories.NewBillRepository(gormDB)
+	billSvc := services.NewBillService(billRepo)
+	billCtrl := controllers.NewBillController(billSvc)
+
 	// Setup Fiber
 	app := fiber.New()
 
 	// Register routes for all controllers
-	routes.Setup(app, coverageCtrl, userCtrl, packageCtrl, odcCtrl, odpCtrl)
+	routes.Setup(app, coverageCtrl, userCtrl, packageCtrl, odcCtrl, odpCtrl, customerCtrl, subscriptionCtrl, billCtrl)
 
 	port := os.Getenv("PORT")
 	if port == "" {

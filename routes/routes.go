@@ -12,6 +12,9 @@ func Setup(
 	packageCtrl *controllers.PackageController,
 	odcCtrl *controllers.OdcController,
 	odpCtrl *controllers.OdpController,
+	customerCtrl *controllers.CustomerController,
+	subscriptionCtrl *controllers.SubscriptionController,
+	billCtrl *controllers.BillController,
 ) {
 
 	coverageCtrl.RegisterRoutes(app)
@@ -19,6 +22,9 @@ func Setup(
 	packageCtrl.RegisterRoutes(app)
 	odcCtrl.RegisterRoutes(app)
 	odpCtrl.RegisterRoutes(app)
+	customerCtrl.RegisterRoutes(app)
+	subscriptionCtrl.RegisterRoutes(app)
+	billCtrl.RegisterRoutes(app)
 
 	// health
 	app.Get("/health", func(c *fiber.Ctx) error {

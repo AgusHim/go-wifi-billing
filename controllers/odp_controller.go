@@ -16,7 +16,7 @@ func NewOdpController(service services.OdpService) *OdpController {
 }
 
 func (c *OdpController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/odps")
+	r := router.Group("/admin_api/odps")
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)

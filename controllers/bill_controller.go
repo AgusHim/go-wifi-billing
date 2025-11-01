@@ -1,0 +1,77 @@
+package controllers
+
+import (
+	"github.com/Agushim/go_wifi_billing/models"
+	"github.com/Agushim/go_wifi_billing/services"
+	"github.com/gofiber/fiber/v2"
+)
+
+type BillController struct {
+	service services.BillService
+}
+
+func (c *BillController) RegisterRoutes(router fiber.Router) {
+	user_api := router.Group("/user_api/bills")
+	user_api.Get("/", c.GetAll)
+	
+	admin_api := router.Group("/admin_api/bills")
+	admin_api.Post("/", c.Create)
+	admin_api.Get("/", c.GetAll)
+	admin_api.Get("/:id", c.GetByID)
+	admin_api.Put("/:id", c.Update)
+	admin_api.Delete("/:id", c.Delete)
+}
+
+func NewBillController(service services.BillService) *BillController {
+	return &BillController{service}
+}
+
+func (c *BillController) GetAll(ctx *fiber.Ctx) error {
+	data, err := c.service.GetAll()
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Success get all bills"})
+}
+
+func (c *BillController) GetByID(ctx *fiber.Ctx) error {
+	id := ctx.Params("id")
+	data, err := c.service.GetByID(id)
+	if err != nil {
+		return ctx.Status(404).JSON(fiber.Map{"success": false, "message": "Bill not found"})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Success get bill"})
+}
+
+func (c *BillController) Create(ctx *fiber.Ctx) error {
+	var input models.Bill
+	if err := ctx.BodyParser(&input); err != nil {
+		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	data, err := c.service.Create(input)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Bill created successfully"})
+}
+
+func (c *BillController) Update(ctx *fiber.Ctx) error {
+	id := ctx.Params("id")
+	var input models.Bill
+	if err := ctx.BodyParser(&input); err != nil {
+		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	data, err := c.service.Update(id, input)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Bill updated successfully"})
+}
+
+func (c *BillController) Delete(ctx *fiber.Ctx) error {
+	id := ctx.Params("id")
+	if err := c.service.Delete(id); err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "message": "Bill deleted successfully"})
+}

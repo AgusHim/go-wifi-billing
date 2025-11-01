@@ -1,0 +1,46 @@
+package repositories
+
+import (
+	"github.com/Agushim/go_wifi_billing/models"
+	"gorm.io/gorm"
+)
+
+type BillRepository interface {
+	FindAll() ([]models.Bill, error)
+	FindByID(id string) (models.Bill, error)
+	Create(bill *models.Bill) error
+	Update(bill *models.Bill) error
+	Delete(id string) error
+}
+
+type billRepository struct {
+	db *gorm.DB
+}
+
+func NewBillRepository(db *gorm.DB) BillRepository {
+	return &billRepository{db}
+}
+
+func (r *billRepository) FindAll() ([]models.Bill, error) {
+	var bills []models.Bill
+	err := r.db.Preload("Customer").Preload("Subscription").Find(&bills).Error
+	return bills, err
+}
+
+func (r *billRepository) FindByID(id string) (models.Bill, error) {
+	var bill models.Bill
+	err := r.db.Preload("Customer").Preload("Subscription").First(&bill, "id = ?", id).Error
+	return bill, err
+}
+
+func (r *billRepository) Create(bill *models.Bill) error {
+	return r.db.Create(bill).Error
+}
+
+func (r *billRepository) Update(bill *models.Bill) error {
+	return r.db.Save(bill).Error
+}
+
+func (r *billRepository) Delete(id string) error {
+	return r.db.Delete(&models.Bill{}, "id = ?", id).Error
+}

@@ -16,7 +16,7 @@ func NewPackageController(service services.PackageService) *PackageController {
 }
 
 func (c *PackageController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/packages")
+	r := router.Group("/admin_api/packages")
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)
