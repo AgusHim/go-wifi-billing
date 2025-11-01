@@ -13,7 +13,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=${POSTGRES_DB}
       - DB_PORT=${POSTGRES_PORT}
-      - DATABASE_URL=${DATABASE_URL}
+      - POSTGRES_URL=${POSTGRES_URL}
     command: ./main # or `air` if using hot reload
     working_dir: /app
 
