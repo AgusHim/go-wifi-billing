@@ -14,8 +14,6 @@ services:
       - DB_NAME=${POSTGRES_DB}
       - DB_PORT=${POSTGRES_PORT}
       - DATABASE_URL=${DATABASE_URL}
-    volumes:
-      - .:/app
     command: ./main # or `air` if using hot reload
     working_dir: /app
 
