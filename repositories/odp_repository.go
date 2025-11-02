@@ -29,7 +29,7 @@ func (r *odpRepository) Create(odp *models.Odp) error {
 
 func (r *odpRepository) FindAll() ([]models.Odp, error) {
 	var odps []models.Odp
-	err := r.db.Find(&odps).Error
+	err := r.db.Preload("Odc").Preload("Coverage").Find(&odps).Error
 	return odps, err
 }
 

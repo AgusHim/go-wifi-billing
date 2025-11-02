@@ -28,7 +28,7 @@ func (r *odcRepository) Create(odc *models.Odc) error {
 
 func (r *odcRepository) FindAll() ([]models.Odc, error) {
 	var odcs []models.Odc
-	err := r.db.Find(&odcs).Error
+	err := r.db.Preload("Coverage").Find(&odcs).Error
 	return odcs, err
 }
 

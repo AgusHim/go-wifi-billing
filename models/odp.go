@@ -23,6 +23,9 @@ type Odp struct {
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 	DeletedAt     gorm.DeletedAt `json:"deleted_at" gorm:"index"`
+
+	Odc      Odc      `json:"odc" gorm:"foreignKey:OdcID" `
+	Coverage Coverage `json:"coverage" gorm:"foreignKey:CoverageID" `
 }
 
 func (o *Odp) BeforeCreate(tx *gorm.DB) (err error) {

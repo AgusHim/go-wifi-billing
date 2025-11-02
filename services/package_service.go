@@ -11,7 +11,7 @@ type PackageService interface {
 	Create(pkg *models.Package) error
 	GetAll() ([]models.Package, error)
 	GetByID(id uuid.UUID) (*models.Package, error)
-	Update(id uuid.UUID, input *models.Package) error
+	Update(id uuid.UUID, input *models.Package) (*models.Package, error)
 	Delete(id uuid.UUID) error
 }
 
@@ -35,10 +35,10 @@ func (s *packageService) GetByID(id uuid.UUID) (*models.Package, error) {
 	return s.repo.FindByID(id)
 }
 
-func (s *packageService) Update(id uuid.UUID, input *models.Package) error {
+func (s *packageService) Update(id uuid.UUID, input *models.Package) (*models.Package, error) {
 	existing, err := s.repo.FindByID(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	existing.Category = input.Category
 	existing.Name = input.Name
@@ -46,7 +46,11 @@ func (s *packageService) Update(id uuid.UUID, input *models.Package) error {
 	existing.QuotaGB = input.QuotaGB
 	existing.Price = input.Price
 	existing.Description = input.Description
-	return s.repo.Update(existing)
+
+	if err := s.repo.Update(existing); err != nil {
+		return nil, err
+	}
+	return existing, nil
 }
 
 func (s *packageService) Delete(id uuid.UUID) error {

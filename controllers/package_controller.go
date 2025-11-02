@@ -61,13 +61,14 @@ func (c *PackageController) Update(ctx *fiber.Ctx) error {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid ID"})
 	}
 	var pkg models.Package
-	if err := ctx.BodyParser(&pkg); err != nil {
+	if err = ctx.BodyParser(&pkg); err != nil {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
-	if err := c.service.Update(id, &pkg); err != nil {
+	updated_pkg, err := c.service.Update(id, &pkg)
+	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
-	return ctx.JSON(fiber.Map{"success": true, "message": "Package updated"})
+	return ctx.JSON(fiber.Map{"success": true, "data": updated_pkg, "message": "Package updated"})
 }
 
 func (c *PackageController) Delete(ctx *fiber.Ctx) error {
