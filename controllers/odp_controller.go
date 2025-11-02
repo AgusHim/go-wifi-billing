@@ -64,15 +64,16 @@ func (c *OdpController) Update(ctx *fiber.Ctx) error {
 	}
 
 	var odp models.Odp
-	if err := ctx.BodyParser(&odp); err != nil {
+	if err = ctx.BodyParser(&odp); err != nil {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	if err := c.service.Update(id, &odp); err != nil {
+	updated_odp, err := c.service.Update(id, &odp)
+	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	return ctx.JSON(fiber.Map{"success": true, "message": "ODP updated"})
+	return ctx.JSON(fiber.Map{"success": true, "message": "ODP updated", "data": updated_odp})
 }
 
 func (c *OdpController) Delete(ctx *fiber.Ctx) error {

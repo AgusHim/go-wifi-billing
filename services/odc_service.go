@@ -10,7 +10,7 @@ type OdcService interface {
 	Create(odc *models.Odc) error
 	GetAll() ([]models.Odc, error)
 	GetByID(id uuid.UUID) (*models.Odc, error)
-	Update(id uuid.UUID, input *models.Odc) error
+	Update(id uuid.UUID, input *models.Odc) (*models.Odc, error)
 	Delete(id uuid.UUID) error
 }
 
@@ -34,10 +34,10 @@ func (s *odcService) GetByID(id uuid.UUID) (*models.Odc, error) {
 	return s.repo.FindByID(id)
 }
 
-func (s *odcService) Update(id uuid.UUID, input *models.Odc) error {
+func (s *odcService) Update(id uuid.UUID, input *models.Odc) (*models.Odc, error) {
 	existing, err := s.repo.FindByID(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	existing.CoverageID = input.CoverageID
@@ -52,7 +52,10 @@ func (s *odcService) Update(id uuid.UUID, input *models.Odc) error {
 	existing.Latitude = input.Latitude
 	existing.Longitude = input.Longitude
 
-	return s.repo.Update(existing)
+	if err := s.repo.Update(existing); err != nil {
+		return nil, err
+	}
+	return existing, nil
 }
 
 func (s *odcService) Delete(id uuid.UUID) error {

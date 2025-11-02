@@ -11,7 +11,10 @@ import (
 	"github.com/Agushim/go_wifi_billing/routes"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
+<<<<<<< HEAD
 	"github.com/joho/godotenv"
+=======
+>>>>>>> origin
 	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
@@ -22,10 +25,15 @@ func main() {
 	}
 
 	// Init DB (Postgres if POSTGRE_URL set, else SQLite)
+<<<<<<< HEAD
 	dsn := os.Getenv("POSTGRE_URL")
 	sqlitePath := os.Getenv("SQLITE_PATH")
 
 	var gormDB, err = db.InitDB(dsn, sqlitePath)
+=======
+	dsn := os.Getenv("POSTGRES_URL")
+	gormDB, err := db.InitDB(dsn)
+>>>>>>> origin
 	if err != nil {
 		log.Fatalf("failed to init db: %v", err)
 	}
@@ -73,11 +81,12 @@ func main() {
 	// Setup Fiber
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
-    AllowOrigins: "*", // allow all origins, or specify like "http://localhost:3000"
-    AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
-    AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowOrigins:     "http://localhost:3000, https://localhost:3000, http://103.103.22.212, https://103.103.22.212, https://103.103.22.212:3000",
+		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		ExposeHeaders:    "Content-Length",
+		AllowCredentials: true,
 	}))
-
 
 	// Register routes for all controllers
 	routes.Setup(app, coverageCtrl, userCtrl, packageCtrl, odcCtrl, odpCtrl, customerCtrl, subscriptionCtrl, billCtrl)

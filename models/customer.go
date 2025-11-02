@@ -26,6 +26,7 @@ type Customer struct {
 	Mode          string         `json:"mode"`
 	IDPPOE        string         `json:"id_ppoe"`
 	ProfilePPOE   string         `json:"profile_ppoe"`
+	AdminID       uuid.UUID      `json:"admin_id" gorm:"type:uuid"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 	DeletedAt     gorm.DeletedAt `json:"deleted_at" gorm:"index"`
@@ -34,6 +35,7 @@ type Customer struct {
 	Coverage *Coverage `json:"coverage" gorm:"foreignKey:CoverageID"`
 	Odc      *Odc      `json:"odc" gorm:"foreignKey:OdcID"`
 	Odp      *Odp      `json:"odp" gorm:"foreignKey:OdpID"`
+	Admin    *User     `json:"admin" gorm:"foreignKey:AdminID"`
 }
 
 func (c *Customer) BeforeCreate(tx *gorm.DB) (err error) {

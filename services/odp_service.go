@@ -10,7 +10,7 @@ type OdpService interface {
 	Create(odp *models.Odp) error
 	GetAll() ([]models.Odp, error)
 	GetByID(id uuid.UUID) (*models.Odp, error)
-	Update(id uuid.UUID, input *models.Odp) error
+	Update(id uuid.UUID, input *models.Odp) (*models.Odp, error)
 	Delete(id uuid.UUID) error
 }
 
@@ -34,13 +34,14 @@ func (s *odpService) GetByID(id uuid.UUID) (*models.Odp, error) {
 	return s.repo.FindByID(id)
 }
 
-func (s *odpService) Update(id uuid.UUID, input *models.Odp) error {
+func (s *odpService) Update(id uuid.UUID, input *models.Odp) (*models.Odp, error) {
 	existing, err := s.repo.FindByID(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	existing.OdcID = input.OdcID
+	existing.Code = input.Code
 	existing.OdcPortNumber = input.OdcPortNumber
 	existing.CoverageID = input.CoverageID
 	existing.FoTubeColor = input.FoTubeColor
@@ -51,7 +52,12 @@ func (s *odpService) Update(id uuid.UUID, input *models.Odp) error {
 	existing.Latitude = input.Latitude
 	existing.Longitude = input.Longitude
 
-	return s.repo.Update(existing)
+	err = s.repo.Update(existing)
+	if err != nil {
+		return nil, err
+	}
+
+	return existing, nil
 }
 
 func (s *odpService) Delete(id uuid.UUID) error {
