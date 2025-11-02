@@ -11,10 +11,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/routes"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
-<<<<<<< HEAD
 	"github.com/joho/godotenv"
-=======
->>>>>>> origin
 	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
@@ -25,15 +22,10 @@ func main() {
 	}
 
 	// Init DB (Postgres if POSTGRE_URL set, else SQLite)
-<<<<<<< HEAD
 	dsn := os.Getenv("POSTGRE_URL")
 	sqlitePath := os.Getenv("SQLITE_PATH")
 
 	var gormDB, err = db.InitDB(dsn, sqlitePath)
-=======
-	dsn := os.Getenv("POSTGRES_URL")
-	gormDB, err := db.InitDB(dsn)
->>>>>>> origin
 	if err != nil {
 		log.Fatalf("failed to init db: %v", err)
 	}
