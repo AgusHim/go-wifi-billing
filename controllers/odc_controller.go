@@ -63,15 +63,16 @@ func (c *OdcController) Update(ctx *fiber.Ctx) error {
 	}
 
 	var odc models.Odc
-	if err := ctx.BodyParser(&odc); err != nil {
+	if err = ctx.BodyParser(&odc); err != nil {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	if err := c.service.Update(id, &odc); err != nil {
+	updated_odc, err := c.service.Update(id, &odc)
+	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	return ctx.JSON(fiber.Map{"success": true, "message": "ODC updated"})
+	return ctx.JSON(fiber.Map{"success": true, "message": "ODC updated", "data": updated_odc})
 }
 
 func (c *OdcController) Delete(ctx *fiber.Ctx) error {
