@@ -50,14 +50,15 @@ func main() {
 	odpSvc := services.NewOdpService(odpRepo)
 	odpCtrl := controllers.NewOdpController(odpSvc)
 
-	customerRepo := repositories.NewCustomerRepository(gormDB)
-	customerSvc := services.NewCustomerService(customerRepo)
-	customerCtrl := controllers.NewCustomerController(customerSvc)
-
 	subscriptionRepo := repositories.NewSubscriptionRepository(gormDB)
 	subscriptionSvc := services.NewSubscriptionService(subscriptionRepo)
 	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc)
 
+	customerRepo := repositories.NewCustomerRepository(gormDB)
+	customerSvc := services.NewCustomerService(customerRepo, userSvc, subscriptionSvc)
+	customerCtrl := controllers.NewCustomerController(customerSvc)
+
+	
 	billRepo := repositories.NewBillRepository(gormDB)
 	billSvc := services.NewBillService(billRepo)
 	billCtrl := controllers.NewBillController(billSvc)

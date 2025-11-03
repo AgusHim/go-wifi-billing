@@ -38,7 +38,9 @@ func (c *SubscriptionController) Create(ctx *fiber.Ctx) error {
 }
 
 func (c *SubscriptionController) GetAll(ctx *fiber.Ctx) error {
-	subscriptions, err := c.service.GetAll()
+	customerID := ctx.Query("customer_id", "")
+
+	subscriptions, err := c.service.GetAll(&customerID)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
@@ -64,15 +66,16 @@ func (c *SubscriptionController) Update(ctx *fiber.Ctx) error {
 	}
 
 	var subscription models.Subscription
-	if err := ctx.BodyParser(&subscription); err != nil {
+	if err = ctx.BodyParser(&subscription); err != nil {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	if err := c.service.Update(id, &subscription); err != nil {
+	n_subs, err := c.service.Update(id, &subscription)
+	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	return ctx.JSON(fiber.Map{"success": true, "message": "Subscription updated"})
+	return ctx.JSON(fiber.Map{"success": true, "data": n_subs, "message": "Subscription updated"})
 }
 
 func (c *SubscriptionController) Delete(ctx *fiber.Ctx) error {

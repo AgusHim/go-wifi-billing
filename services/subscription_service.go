@@ -8,9 +8,9 @@ import (
 
 type SubscriptionService interface {
 	Create(subscription *models.Subscription) error
-	GetAll() ([]models.Subscription, error)
+	GetAll(customerID *string) ([]models.Subscription, error)
 	GetByID(id uuid.UUID) (*models.Subscription, error)
-	Update(id uuid.UUID, input *models.Subscription) error
+	Update(id uuid.UUID, input *models.Subscription) (*models.Subscription, error)
 	Delete(id uuid.UUID) error
 }
 
@@ -26,21 +26,21 @@ func (s *subscriptionService) Create(subscription *models.Subscription) error {
 	return s.repo.Create(subscription)
 }
 
-func (s *subscriptionService) GetAll() ([]models.Subscription, error) {
-	return s.repo.FindAll()
+func (s *subscriptionService) GetAll(customerID *string) ([]models.Subscription, error) {
+	return s.repo.FindAll(customerID)
 }
 
 func (s *subscriptionService) GetByID(id uuid.UUID) (*models.Subscription, error) {
 	return s.repo.FindByID(id)
 }
 
-func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) error {
+func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) (*models.Subscription, error) {
 	existing, err := s.repo.FindByID(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	existing.UserID = input.UserID
+	existing.CustomerID = input.CustomerID
 	existing.PackageID = input.PackageID
 	existing.StartDate = input.StartDate
 	existing.EndDate = input.EndDate
@@ -48,7 +48,12 @@ func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) e
 	existing.Status = input.Status
 	existing.Description = input.Description
 
-	return s.repo.Update(existing)
+	err = s.repo.Update(existing)
+	if err != nil {
+		return nil, err
+	}
+
+	return existing, nil
 }
 
 func (s *subscriptionService) Delete(id uuid.UUID) error {

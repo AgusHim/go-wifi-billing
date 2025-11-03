@@ -23,6 +23,7 @@ type UserService interface {
 	GetByID(id string) (*models.User, error)
 	Update(id string, input dto.UpdateUserDTO) (*models.User, error)
 	Delete(id string) error
+	CheckIsRegistered(email string, phone string) (*models.User, error)
 }
 
 type userService struct {
@@ -127,4 +128,8 @@ func (s *userService) Update(id string, input dto.UpdateUserDTO) (*models.User, 
 func (s *userService) Delete(id string) error {
 	uid, _ := uuid.Parse(id)
 	return s.repo.Delete(uid)
+}
+
+func (s *userService) CheckIsRegistered(email string, phone string) (*models.User, error) {
+	return s.repo.CheckIsRegistered(email, phone)
 }

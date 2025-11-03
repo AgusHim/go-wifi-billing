@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -19,6 +20,7 @@ func SeedCoverages(db *gorm.DB) {
 
 	coverages := []models.Coverage{
 		{
+			ID:          uuid.MustParse("11111111-1111-1111-1111-111111111111"),
 			CodeArea:    "CGK-001",
 			Name:        "Jakarta Pusat",
 			Address:     "Jl. MH Thamrin No. 10, Jakarta Pusat",
@@ -30,6 +32,7 @@ func SeedCoverages(db *gorm.DB) {
 			UpdatedAt:   time.Now(),
 		},
 		{
+			ID:          uuid.MustParse("22222222-2222-2222-2222-222222222222"),
 			CodeArea:    "BDG-002",
 			Name:        "Bandung Kota",
 			Address:     "Jl. Asia Afrika No. 20, Bandung",
@@ -41,6 +44,7 @@ func SeedCoverages(db *gorm.DB) {
 			UpdatedAt:   time.Now(),
 		},
 		{
+			ID:          uuid.MustParse("33333333-3333-3333-3333-333333333333"),
 			CodeArea:    "SBY-003",
 			Name:        "Surabaya Barat",
 			Address:     "Jl. Mayjend Sungkono No. 50, Surabaya",

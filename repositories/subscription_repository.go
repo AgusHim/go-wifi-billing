@@ -8,7 +8,7 @@ import (
 
 type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
-	FindAll() ([]models.Subscription, error)
+	FindAll(customerID *string) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
 	Update(subscription *models.Subscription) error
 	Delete(id uuid.UUID) error
@@ -26,10 +26,15 @@ func (r *subscriptionRepository) Create(subscription *models.Subscription) error
 	return r.db.Create(subscription).Error
 }
 
-func (r *subscriptionRepository) FindAll() ([]models.Subscription, error) {
+func (r *subscriptionRepository) FindAll(customerID *string) ([]models.Subscription, error) {
 	var subscriptions []models.Subscription
-	err := r.db.
+	query := r.db
+	if customerID != nil && *customerID != "" {
+		query = query.Where("customer_id = ?", customerID)
+	}
+	err := query.
 		Preload("Customer").
+		Preload("Customer.User").
 		Preload("Package").
 		Find(&subscriptions).Error
 	return subscriptions, err
@@ -39,13 +44,14 @@ func (r *subscriptionRepository) FindByID(id uuid.UUID) (*models.Subscription, e
 	var subscription models.Subscription
 	err := r.db.
 		Preload("Customer").
+		Preload("Customer.User").
 		Preload("Package").
 		First(&subscription, "id = ?", id).Error
 	return &subscription, err
 }
 
 func (r *subscriptionRepository) Update(subscription *models.Subscription) error {
-	return r.db.Save(subscription).Error
+	return r.db.Omit("Customer", "Package").Save(subscription).Error
 }
 
 func (r *subscriptionRepository) Delete(id uuid.UUID) error {

@@ -31,6 +31,7 @@ func (r *customerRepository) FindAll() ([]models.Customer, error) {
 	var customers []models.Customer
 	err := r.db.
 		Preload("User").
+		Preload("Admin").
 		Preload("Coverage").
 		Preload("Odc").
 		Preload("Odp").
@@ -50,7 +51,12 @@ func (r *customerRepository) FindByID(id uuid.UUID) (*models.Customer, error) {
 }
 
 func (r *customerRepository) Update(customer *models.Customer) error {
-	return r.db.Save(customer).Error
+	return r.db.
+		Omit("User").
+		Omit("Coverage").
+		Omit("Odc").
+		Omit("Odp").
+		Save(customer).Error
 }
 
 func (r *customerRepository) Delete(id uuid.UUID) error {

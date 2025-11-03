@@ -1,6 +1,10 @@
 package services
 
 import (
+	"errors"
+	"time"
+
+	"github.com/Agushim/go_wifi_billing/dto"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/repositories"
 
@@ -8,7 +12,7 @@ import (
 )
 
 type CustomerService interface {
-	Create(customer *models.Customer) error
+	Create(customer *dto.CreateCustomerDTO) (*models.Customer, error)
 	GetAll() ([]models.Customer, error)
 	GetByID(id uuid.UUID) (*models.Customer, error)
 	Update(id uuid.UUID, input *models.Customer) error
@@ -16,15 +20,76 @@ type CustomerService interface {
 }
 
 type customerService struct {
-	repo repositories.CustomerRepository
+	repo                repositories.CustomerRepository
+	userService         UserService
+	subscriptionService SubscriptionService
 }
 
-func NewCustomerService(repo repositories.CustomerRepository) CustomerService {
-	return &customerService{repo}
+func NewCustomerService(repo repositories.CustomerRepository, userService UserService, subscriptionService SubscriptionService) CustomerService {
+	return &customerService{repo, userService, subscriptionService}
 }
 
-func (s *customerService) Create(customer *models.Customer) error {
-	return s.repo.Create(customer)
+func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer, error) {
+	user, _ := s.userService.CheckIsRegistered(*body.Email, *body.Phone)
+	if user != nil {
+		return nil, errors.New("email or phone already registered")
+	}
+
+	user, err := s.userService.Register(dto.RegisterDTO{
+		Name:     *body.Name,
+		Email:    *body.Email,
+		Phone:    *body.Phone,
+		Password: *body.Password,
+		Role:     "customer",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	customer := &models.Customer{
+		ID:            uuid.New(),
+		UserID:        user.ID,
+		CoverageID:    uuid.MustParse(*body.CoverageID),
+		OdcID:         uuid.MustParse(*body.OdcID),
+		OdpID:         uuid.MustParse(*body.OdpID),
+		PortOdp:       *body.PortOdp,
+		ServiceNumber: *body.ServiceNumber,
+		Card:          *body.Card,
+		IDCard:        *body.IDCard,
+		IsSendWa:      *body.IsSendWA,
+		Status:        *body.Status,
+		Address:       *body.Address,
+		Latitude:      *body.Latitude,
+		Longitude:     *body.Longitude,
+		Mode:          *body.Mode,
+		IDPPOE:        *body.IDPPOE,
+		ProfilePPOE:   *body.ProfilePPOE,
+	}
+	err = s.repo.Create(customer)
+	if err != nil {
+		s.userService.Delete(user.ID.String())
+		return nil, err
+	}
+
+	now := time.Now()
+	err = s.subscriptionService.Create(&models.Subscription{
+		CustomerID:   customer.ID,
+		PackageID:    uuid.MustParse(*body.PackageID),
+		IsIncludePPN: *body.IsIncludePPN,
+		PaymentType:  *body.PaymentType,
+		DueDay:       *body.DueDay,
+		PeriodType:   *body.PeriodType,
+		StartDate:    now,
+		EndDate:      now.AddDate(0, 1, 0),
+		Status:       *body.Status,
+		AutoRenew:    true,
+	})
+	if err != nil {
+		s.userService.Delete(user.ID.String())
+		return nil, err
+	}
+
+	return customer, nil
 }
 
 func (s *customerService) GetAll() ([]models.Customer, error) {
@@ -47,9 +112,6 @@ func (s *customerService) Update(id uuid.UUID, input *models.Customer) error {
 	existing.ServiceNumber = input.ServiceNumber
 	existing.Card = input.Card
 	existing.IDCard = input.IDCard
-	existing.IsIncludePPN = input.IsIncludePPN
-	existing.PaymentType = input.PaymentType
-	existing.DueDay = input.DueDay
 	existing.IsSendWa = input.IsSendWa
 	existing.Status = input.Status
 	existing.Address = input.Address

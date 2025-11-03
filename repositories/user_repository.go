@@ -14,6 +14,7 @@ type UserRepository interface {
 	GetAll() ([]models.User, error)
 	Update(user *models.User) error
 	Delete(id uuid.UUID) error
+	CheckIsRegistered(email string, phone string) (*models.User, error)
 }
 
 type userRepository struct {
@@ -56,4 +57,12 @@ func (r *userRepository) Update(user *models.User) error {
 
 func (r *userRepository) Delete(id uuid.UUID) error {
 	return r.db.Delete(&models.User{}, "id = ?", id).Error
+}
+
+func (r *userRepository) CheckIsRegistered(email string, phone string) (*models.User, error) {
+	var u models.User
+	if err := r.db.Where("email = ? OR phone = ?", email, phone).First(&u).Error; err != nil {
+		return nil, err
+	}
+	return &u, nil
 }

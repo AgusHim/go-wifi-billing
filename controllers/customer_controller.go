@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"github.com/Agushim/go_wifi_billing/dto"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 
@@ -26,16 +27,17 @@ func (c *CustomerController) RegisterRoutes(router fiber.Router) {
 }
 
 func (c *CustomerController) Create(ctx *fiber.Ctx) error {
-	var customer models.Customer
+	var customer dto.CreateCustomerDTO
 	if err := ctx.BodyParser(&customer); err != nil {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	if err := c.service.Create(&customer); err != nil {
+	new_customer ,err := c.service.Create(&customer);
+	if  err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	return ctx.JSON(fiber.Map{"success": true, "data": customer, "message": "Customer created"})
+	return ctx.JSON(fiber.Map{"success": true, "data": new_customer, "message": "Customer created"})
 }
 
 func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
