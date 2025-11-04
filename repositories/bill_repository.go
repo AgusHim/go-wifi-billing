@@ -11,6 +11,7 @@ type BillRepository interface {
 	Create(bill *models.Bill) error
 	Update(bill *models.Bill) error
 	Delete(id string) error
+	FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error)
 }
 
 type billRepository struct {
@@ -43,4 +44,17 @@ func (r *billRepository) Update(bill *models.Bill) error {
 
 func (r *billRepository) Delete(id string) error {
 	return r.db.Delete(&models.Bill{}, "id = ?", id).Error
+}
+
+func (r *billRepository) FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error) {
+	var bill models.Bill
+	err := r.db.
+		Where("customer_id = ? AND EXTRACT(MONTH FROM bill_date) = ? AND EXTRACT(YEAR FROM bill_date) = ?",
+			customerID, month, year).
+		First(&bill).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return &bill, nil
 }

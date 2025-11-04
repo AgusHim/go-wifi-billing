@@ -12,11 +12,17 @@ import (
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/joho/godotenv"
 )
 
 func main() {
 	// Init DB (Postgres if POSTGRE_URL set, else SQLite)
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 	dsn := os.Getenv("POSTGRES_URL")
+	log.Printf("dsn: %s", dsn)
 	gormDB, err := db.InitDB(dsn)
 	if err != nil {
 		log.Fatalf("failed to init db: %v", err)
@@ -27,10 +33,7 @@ func main() {
 		log.Fatalf("migration failed: %v", err)
 	}
 
-	if dsn == "" {
-		// Seed data
-		seed.Seed(gormDB)
-	}
+	seed.Seed(gormDB)
 
 	// Init repository, service, controller
 	coverageRepo := repositories.NewCoverageRepository(gormDB)
@@ -62,7 +65,7 @@ func main() {
 	customerCtrl := controllers.NewCustomerController(customerSvc)
 
 	billRepo := repositories.NewBillRepository(gormDB)
-	billSvc := services.NewBillService(billRepo)
+	billSvc := services.NewBillService(billRepo, subscriptionRepo)
 	billCtrl := controllers.NewBillController(billSvc)
 
 	// Setup Fiber

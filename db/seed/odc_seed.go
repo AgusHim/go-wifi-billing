@@ -69,7 +69,7 @@ func SeedOdcs(db *gorm.DB) {
 		},
 	}
 
-	if err := db.Create(&odcs).Error; err != nil {
+	if err := db.Omit("Coverage").Create(&odcs).Error; err != nil {
 		log.Fatalf("❌ Failed to seed ODCs: %v", err)
 	}
 

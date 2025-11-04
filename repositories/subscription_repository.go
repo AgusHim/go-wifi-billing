@@ -8,7 +8,7 @@ import (
 
 type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
-	FindAll(customerID *string) ([]models.Subscription, error)
+	FindAll(customerID *string, status *string) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
 	Update(subscription *models.Subscription) error
 	Delete(id uuid.UUID) error
@@ -26,11 +26,14 @@ func (r *subscriptionRepository) Create(subscription *models.Subscription) error
 	return r.db.Create(subscription).Error
 }
 
-func (r *subscriptionRepository) FindAll(customerID *string) ([]models.Subscription, error) {
+func (r *subscriptionRepository) FindAll(customerID *string, status *string) ([]models.Subscription, error) {
 	var subscriptions []models.Subscription
 	query := r.db
 	if customerID != nil && *customerID != "" {
 		query = query.Where("customer_id = ?", customerID)
+	}
+	if status != nil && *status != "" {
+		query = query.Where("status = ?", status)
 	}
 	err := query.
 		Preload("Customer").

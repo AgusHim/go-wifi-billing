@@ -6,9 +6,9 @@ import (
 
 // Seed memanggil semua fungsi seeder
 func Seed(db *gorm.DB) {
-	SeedPackages(db)
 	SeedCoverages(db)
 	SeedOdcs(db)
-	SeedOdps(db)
+	//SeedOdps(db)
+	SeedPackages(db)
 	SeedUsers(db)
 }

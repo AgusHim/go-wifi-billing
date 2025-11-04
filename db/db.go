@@ -37,9 +37,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.User{},
 		&models.Odc{},
 		&models.Odp{},
-		&models.Customer{},
 		&models.Subscription{},
 		&models.Bill{},
 		&models.Payment{},
+		&models.Customer{},
 	)
 }

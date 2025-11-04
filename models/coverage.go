@@ -18,7 +18,6 @@ type Coverage struct {
 	Longitude   float64        `json:"longitude"`
 	CreatedAt   time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt   time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
 // BeforeCreate hook to set UUID when using SQLite or when DB doesn't generate it
