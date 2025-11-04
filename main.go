@@ -26,8 +26,11 @@ func main() {
 	if err := db.AutoMigrate(gormDB); err != nil {
 		log.Fatalf("migration failed: %v", err)
 	}
-	// Seed data
-	seed.Seed(gormDB)
+
+	if dsn != "" {
+		// Seed data
+		seed.Seed(gormDB)
+	}
 
 	// Init repository, service, controller
 	coverageRepo := repositories.NewCoverageRepository(gormDB)
@@ -58,7 +61,6 @@ func main() {
 	customerSvc := services.NewCustomerService(customerRepo, userSvc, subscriptionSvc)
 	customerCtrl := controllers.NewCustomerController(customerSvc)
 
-	
 	billRepo := repositories.NewBillRepository(gormDB)
 	billSvc := services.NewBillService(billRepo)
 	billCtrl := controllers.NewBillController(billSvc)
