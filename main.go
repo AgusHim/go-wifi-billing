@@ -27,7 +27,7 @@ func main() {
 		log.Fatalf("migration failed: %v", err)
 	}
 
-	if dsn != "" {
+	if dsn == "" {
 		// Seed data
 		seed.Seed(gormDB)
 	}
