@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -8,7 +10,7 @@ import (
 
 type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
-	FindAll(customerID *string, status *string) ([]models.Subscription, error)
+	FindAll(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
 	Update(subscription *models.Subscription) error
 	Delete(id uuid.UUID) error
@@ -26,7 +28,7 @@ func (r *subscriptionRepository) Create(subscription *models.Subscription) error
 	return r.db.Create(subscription).Error
 }
 
-func (r *subscriptionRepository) FindAll(customerID *string, status *string) ([]models.Subscription, error) {
+func (r *subscriptionRepository) FindAll(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error) {
 	var subscriptions []models.Subscription
 	query := r.db
 	if customerID != nil && *customerID != "" {
@@ -34,6 +36,11 @@ func (r *subscriptionRepository) FindAll(customerID *string, status *string) ([]
 	}
 	if status != nil && *status != "" {
 		query = query.Where("status = ?", status)
+	}
+	if isEndThisMonth {
+		currentMonth := int(time.Now().Month())
+		currentYear := time.Now().Year()
+		query = query.Where("EXTRACT(MONTH FROM end_date) = ? AND EXTRACT(YEAR FROM end_date) = ?", currentMonth, currentYear)
 	}
 	err := query.
 		Preload("Customer").

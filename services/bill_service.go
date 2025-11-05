@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
@@ -16,6 +17,7 @@ type BillService interface {
 	Create(input models.Bill) (models.Bill, error)
 	Update(id string, input models.Bill) (models.Bill, error)
 	Delete(id string) error
+	GenerateMonthlyBills() error
 }
 
 type billService struct {
@@ -64,7 +66,8 @@ func (s *billService) Delete(id string) error {
 
 func (s *billService) GenerateMonthlyBills() error {
 	status := "active"
-	subs, err := s.subRepo.FindAll(nil, &status)
+	subs, err := s.subRepo.FindAll(nil, &status, true)
+	log.Printf("Found %d active subscriptions", len(subs))
 	if err != nil {
 		return fmt.Errorf("failed to fetch subscriptions: %w", err)
 	}
@@ -72,9 +75,13 @@ func (s *billService) GenerateMonthlyBills() error {
 	currentMonth := int(time.Now().Month())
 	currentYear := time.Now().Year()
 
+	log.Printf("Generating monthly bills for %d-%02d", currentYear, currentMonth)
+
 	for _, sub := range subs {
 		// Cek apakah sudah ada bill bulan ini
 		existing, err := s.repo.FindBillByCustomerAndMonth(sub.CustomerID.String(), currentMonth, currentYear)
+		log.Printf("Checking bill for customer %s in %d-%02d: %v, %v", sub.CustomerID.String(), currentYear, currentMonth, existing, err)
+
 		if err == nil && existing != nil {
 			continue // sudah ada bill bulan ini
 		}
@@ -90,7 +97,7 @@ func (s *billService) GenerateMonthlyBills() error {
 
 		amount := sub.Package.Price
 		if sub.IsIncludePPN {
-			amount = int(float64(amount) * 1.11)
+			amount = int(float64(amount) * 1.11) // tambahkan 11% PPN
 		}
 
 		bill := &models.Bill{
@@ -105,6 +112,8 @@ func (s *billService) GenerateMonthlyBills() error {
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		}
+
+		log.Printf("Creating bill %s for customer %s: %v", bill.PublicID, sub.CustomerID.String(), bill)
 
 		if err := s.repo.Create(bill); err != nil {
 			return fmt.Errorf("failed to create bill: %w", err)

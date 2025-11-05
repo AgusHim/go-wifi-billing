@@ -13,8 +13,9 @@ type BillController struct {
 func (c *BillController) RegisterRoutes(router fiber.Router) {
 	user_api := router.Group("/user_api/bills")
 	user_api.Get("/", c.GetAll)
-	
+
 	admin_api := router.Group("/admin_api/bills")
+	admin_api.Get("/generate", c.GenerateMonthlyBills)
 	admin_api.Post("/", c.Create)
 	admin_api.Get("/", c.GetAll)
 	admin_api.Get("/:id", c.GetByID)
@@ -74,4 +75,11 @@ func (c *BillController) Delete(ctx *fiber.Ctx) error {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "message": "Bill deleted successfully"})
+}
+
+func (c *BillController) GenerateMonthlyBills(ctx *fiber.Ctx) error {
+	if err := c.service.GenerateMonthlyBills(); err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "message": "Monthly bills generated successfully"})
 }

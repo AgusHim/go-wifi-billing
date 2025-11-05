@@ -24,7 +24,12 @@ func NewBillRepository(db *gorm.DB) BillRepository {
 
 func (r *billRepository) FindAll() ([]models.Bill, error) {
 	var bills []models.Bill
-	err := r.db.Preload("Customer").Preload("Subscription").Find(&bills).Error
+	err := r.db.
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package").
+		Find(&bills).Error
 	return bills, err
 }
 

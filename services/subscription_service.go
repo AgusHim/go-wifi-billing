@@ -27,7 +27,7 @@ func (s *subscriptionService) Create(subscription *models.Subscription) error {
 }
 
 func (s *subscriptionService) GetAll(customerID *string) ([]models.Subscription, error) {
-	return s.repo.FindAll(customerID, nil)
+	return s.repo.FindAll(customerID, nil, false)
 }
 
 func (s *subscriptionService) GetByID(id uuid.UUID) (*models.Subscription, error) {
