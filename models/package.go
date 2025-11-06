@@ -12,7 +12,7 @@ type Package struct {
 	Category    string         `json:"category"`
 	Name        string         `json:"name"`
 	SpeedMbps   int            `json:"speed_mbps"`
-	QuotaGB     int            `json:"quota_gb"`
+	QuotaGB     string         `json:"quota_gb"`
 	Price       int            `json:"price"`
 	Description string         `json:"description"`
 	CreatedAt   time.Time      `json:"created_at"`
