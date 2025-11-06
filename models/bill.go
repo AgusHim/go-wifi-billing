@@ -19,7 +19,8 @@ type Bill struct {
 	AdminID        *uuid.UUID `gorm:"type:uuid" json:"admin_id"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
+	DeletedAt      *time.Time `gorm:"index" json:"deleted_at"`
 
-	Subscription Subscription `gorm:"foreignKey:SubscriptionID" json:"subscription"`
-	Customer     Customer     `gorm:"foreignKey:CustomerID" json:"customer"`
+	Subscription Subscription `json:"subscription" gorm:"foreignKey:SubscriptionID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Customer     Customer     `json:"customer" gorm:"foreignKey:CustomerID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }

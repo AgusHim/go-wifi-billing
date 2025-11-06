@@ -36,11 +36,12 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 	}
 
 	user, err := s.userService.Register(dto.RegisterDTO{
-		Name:     *body.Name,
-		Email:    *body.Email,
-		Phone:    *body.Phone,
-		Password: *body.Password,
-		Role:     "customer",
+		Name:       *body.Name,
+		Email:      *body.Email,
+		Phone:      *body.Phone,
+		Password:   *body.Password,
+		Role:       "customer",
+		CoverageID: body.CoverageID,
 	})
 	if err != nil {
 		return nil, err

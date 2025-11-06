@@ -31,7 +31,7 @@ func (r *userRepository) Create(user *models.User) error {
 
 func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	var u models.User
-	if err := r.db.Where("email = ?", email).First(&u).Error; err != nil {
+	if err := r.db.Where("email = ? AND deleted_at IS NULL", email).First(&u).Error; err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -39,7 +39,7 @@ func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 
 func (r *userRepository) GetByID(id uuid.UUID) (*models.User, error) {
 	var u models.User
-	if err := r.db.First(&u, "id = ?", id).Error; err != nil {
+	if err := r.db.First(&u, "id = ? AND deleted_at IS NULL", id).Error; err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -61,7 +61,7 @@ func (r *userRepository) Delete(id uuid.UUID) error {
 
 func (r *userRepository) CheckIsRegistered(email string, phone string) (*models.User, error) {
 	var u models.User
-	if err := r.db.Where("email = ? OR phone = ?", email, phone).First(&u).Error; err != nil {
+	if err := r.db.Where("email = ? OR phone = ? AND deleted_at IS NULL", email, phone).First(&u).Error; err != nil {
 		return nil, err
 	}
 	return &u, nil

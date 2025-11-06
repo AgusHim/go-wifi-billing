@@ -1,11 +1,12 @@
 package dto
 
 type RegisterDTO struct {
-	Name     string `json:"name" validate:"required"`
-	Email    string `json:"email" validate:"required,email"`
-	Phone    string `json:"phone"`
-	Password string `json:"password" validate:"required,min=6"`
-	Role     string `json:"role" validate:"required"`
+	Name       string  `json:"name" validate:"required"`
+	Email      string  `json:"email" validate:"required,email"`
+	Phone      string  `json:"phone"`
+	Password   string  `json:"password" validate:"required,min=6"`
+	Role       string  `json:"role" validate:"required"`
+	CoverageID *string `json:"coverage_id"`
 }
 
 type LoginDTO struct {

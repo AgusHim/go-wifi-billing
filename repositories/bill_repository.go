@@ -35,7 +35,12 @@ func (r *billRepository) FindAll() ([]models.Bill, error) {
 
 func (r *billRepository) FindByID(id string) (models.Bill, error) {
 	var bill models.Bill
-	err := r.db.Preload("Customer").Preload("Subscription").First(&bill, "id = ?", id).Error
+	err := r.db.
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package").
+		First(&bill, "id = ?", id).Error
 	return bill, err
 }
 

@@ -29,6 +29,7 @@ type Customer struct {
 	AdminID       *uuid.UUID `json:"admin_id" gorm:"type:uuid"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	DeletedAt     *time.Time `json:"deleted_at" gorm:"index"`
 
 	// Relationships (optional preload)
 	User     *User     `json:"user" gorm:"foreignKey:UserID"`
