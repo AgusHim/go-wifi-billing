@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"github.com/Agushim/go_wifi_billing/dto"
+	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 )
@@ -74,12 +75,12 @@ func (ctrl *UserController) GetByID(c *fiber.Ctx) error {
 
 func (ctrl *UserController) Update(c *fiber.Ctx) error {
 	id := c.Params("id")
-	var input dto.UpdateUserDTO
+	var input models.User
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": "invalid input"})
 	}
 
-	user, err := ctrl.service.Update(id, input)
+	user, err := ctrl.service.Update(id, &input)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

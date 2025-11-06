@@ -21,9 +21,11 @@ type UserService interface {
 	Login(input dto.LoginDTO) (string, *models.User, error)
 	GetAll() ([]models.User, error)
 	GetByID(id string) (*models.User, error)
-	Update(id string, input dto.UpdateUserDTO) (*models.User, error)
+	Update(id string, input *models.User) (*models.User, error)
 	Delete(id string) error
 	CheckIsRegistered(email string, phone string) (*models.User, error)
+	CheckIsRegisteredIncludeDeleted(email, phone string) (*models.User, error)
+	Restore(userID uuid.UUID) error
 }
 
 type userService struct {
@@ -99,7 +101,7 @@ func (s *userService) GetByID(id string) (*models.User, error) {
 	return s.repo.GetByID(uid)
 }
 
-func (s *userService) Update(id string, input dto.UpdateUserDTO) (*models.User, error) {
+func (s *userService) Update(id string, input *models.User) (*models.User, error) {
 	uid, _ := uuid.Parse(id)
 	user, err := s.repo.GetByID(uid)
 	if err != nil {
@@ -109,15 +111,10 @@ func (s *userService) Update(id string, input dto.UpdateUserDTO) (*models.User, 
 		return nil, errors.New("user not found")
 	}
 
-	if input.Name != nil {
-		user.Name = *input.Name
-	}
-	if input.Phone != nil {
-		user.Phone = *input.Phone
-	}
-	if input.Role != nil {
-		user.Role = *input.Role
-	}
+	user.Name = input.Name
+	user.Phone = input.Phone
+	user.Email = input.Email
+	user.Role = input.Role
 
 	if err := s.repo.Update(user); err != nil {
 		return nil, err
@@ -132,4 +129,19 @@ func (s *userService) Delete(id string) error {
 
 func (s *userService) CheckIsRegistered(email string, phone string) (*models.User, error) {
 	return s.repo.CheckIsRegistered(email, phone)
+}
+
+func (s *userService) CheckIsRegisteredIncludeDeleted(email, phone string) (*models.User, error) {
+	var user models.User
+	if err := s.repo.FindIncludeDeleted(&user, email, phone); err != nil {
+		return nil, err
+	}
+	if user.ID == uuid.Nil {
+		return nil, nil
+	}
+	return &user, nil
+}
+
+func (s *userService) Restore(userID uuid.UUID) error {
+	return s.repo.Restore(userID)
 }

@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"github.com/Agushim/go_wifi_billing/dto"
-	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 
 	"github.com/gofiber/fiber/v2"
@@ -32,8 +31,8 @@ func (c *CustomerController) Create(ctx *fiber.Ctx) error {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	new_customer ,err := c.service.Create(&customer);
-	if  err != nil {
+	new_customer, err := c.service.Create(&customer)
+	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
@@ -66,16 +65,17 @@ func (c *CustomerController) Update(ctx *fiber.Ctx) error {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid ID"})
 	}
 
-	var customer models.Customer
-	if err := ctx.BodyParser(&customer); err != nil {
+	var customer dto.CreateCustomerDTO
+	if err = ctx.BodyParser(&customer); err != nil {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	if err := c.service.Update(id, &customer); err != nil {
+	updated, err := c.service.Update(id, &customer)
+	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 
-	return ctx.JSON(fiber.Map{"success": true, "message": "Customer updated"})
+	return ctx.JSON(fiber.Map{"success": true, "data": updated, "message": "Customer updated"})
 }
 
 func (c *CustomerController) Delete(ctx *fiber.Ctx) error {

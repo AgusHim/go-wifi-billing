@@ -45,6 +45,8 @@ func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) (
 	existing.StartDate = input.StartDate
 	existing.EndDate = input.EndDate
 	existing.AutoRenew = input.AutoRenew
+	existing.IsActiveUniqueCode = input.IsActiveUniqueCode
+	existing.IsIncludePPN = input.IsIncludePPN
 	existing.Status = input.Status
 	existing.Description = input.Description
 

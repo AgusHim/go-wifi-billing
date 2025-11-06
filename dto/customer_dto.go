@@ -12,11 +12,6 @@ type CreateCustomerDTO struct {
 	ServiceNumber *string  `json:"service_number,omitempty"`
 	Card          *string  `json:"card,omitempty"`
 	IDCard        *string  `json:"id_card,omitempty" validate:"omitempty,len=16,numeric"`
-	IsIncludePPN  *bool    `json:"is_include_ppn,omitempty"`
-	PaymentType   *string  `json:"payment_type,omitempty" validate:"omitempty"`
-	DueDay        *int     `json:"due_day,omitempty" validate:"omitempty,min=1,max=28"`
-	PackageID     *string  `json:"package_id,omitempty" validate:"omitempty,uuid4"`
-	PeriodType    *string  `json:"period_type,omitempty" validate:"omitempty"`
 	IsSendWA      *bool    `json:"is_send_wa,omitempty"`
 	Status        *string  `json:"status,omitempty" validate:"omitempty"`
 	Address       *string  `json:"address,omitempty" validate:"omitempty,max=255"`

@@ -15,6 +15,8 @@ type UserRepository interface {
 	Update(user *models.User) error
 	Delete(id uuid.UUID) error
 	CheckIsRegistered(email string, phone string) (*models.User, error)
+	FindIncludeDeleted(user *models.User, email, phone string) error
+	Restore(userID uuid.UUID) error
 }
 
 type userRepository struct {
@@ -61,8 +63,16 @@ func (r *userRepository) Delete(id uuid.UUID) error {
 
 func (r *userRepository) CheckIsRegistered(email string, phone string) (*models.User, error) {
 	var u models.User
-	if err := r.db.Where("email = ? OR phone = ? AND deleted_at IS NULL", email, phone).First(&u).Error; err != nil {
+	if err := r.db.Where("deleted_at IS NULL").Where("email = ? OR phone = ?", email, phone).First(&u).Error; err != nil {
 		return nil, err
 	}
 	return &u, nil
+}
+
+func (r *userRepository) FindIncludeDeleted(user *models.User, email, phone string) error {
+	return r.db.Unscoped().Where("email = ? OR phone = ?", email, phone).First(user).Error
+}
+
+func (r *userRepository) Restore(userID uuid.UUID) error {
+	return r.db.Unscoped().Model(&models.User{}).Where("id = ?", userID).Update("deleted_at", nil).Error
 }
