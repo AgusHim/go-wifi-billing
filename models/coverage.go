@@ -8,17 +8,17 @@ import (
 )
 
 type Coverage struct {
-	ID          uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	CodeArea    string     `gorm:"type:varchar(255)" json:"code_area"`
-	Name        string     `gorm:"type:varchar(255)" json:"name"`
-	Address     string     `gorm:"type:varchar(255)" json:"address"`
-	Description string     `gorm:"type:text" json:"description"`
-	RangeArea   int        `json:"range_area"`
-	Latitude    float64    `json:"latitude"`
-	Longitude   float64    `json:"longitude"`
-	CreatedAt   time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt   time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt   *time.Time `gorm:"index" json:"deleted_at"`
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	CodeArea    string         `gorm:"type:varchar(255)" json:"code_area"`
+	Name        string         `gorm:"type:varchar(255)" json:"name"`
+	Address     string         `gorm:"type:varchar(255)" json:"address"`
+	Description string         `gorm:"type:text" json:"description"`
+	RangeArea   int            `json:"range_area"`
+	Latitude    float64        `json:"latitude"`
+	Longitude   float64        `json:"longitude"`
+	CreatedAt   time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }
 
 // BeforeCreate hook to set UUID when using SQLite or when DB doesn't generate it
