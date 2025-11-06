@@ -64,6 +64,7 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 	customer := &models.Customer{
 		ID:            uuid.New(),
 		UserID:        user.ID,
+		User:          user,
 		CoverageID:    uuid.MustParse(*body.CoverageID),
 		OdcID:         uuid.MustParse(*body.OdcID),
 		OdpID:         uuid.MustParse(*body.OdpID),
