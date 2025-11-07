@@ -60,6 +60,8 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 		}
 	}
 
+	adminID := uuid.MustParse(*body.AdminID)
+
 	// Buat customer baru
 	customer := &models.Customer{
 		ID:            uuid.New(),
@@ -80,6 +82,7 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 		Mode:          *body.Mode,
 		IDPPOE:        *body.IDPPOE,
 		ProfilePPOE:   *body.ProfilePPOE,
+		AdminID:       &adminID,
 	}
 
 	if err := s.repo.Create(customer); err != nil {
@@ -123,6 +126,8 @@ func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*m
 	existing.Mode = *input.Mode
 	existing.IDPPOE = *input.IDPPOE
 	existing.ProfilePPOE = *input.ProfilePPOE
+	adminID := uuid.MustParse(*input.AdminID)
+	existing.AdminID = &adminID
 
 	user, err := s.userService.GetByID(existing.UserID.String())
 	if err != nil {

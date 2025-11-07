@@ -19,7 +19,7 @@ var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
 type UserService interface {
 	Register(input dto.RegisterDTO) (*models.User, error)
 	Login(input dto.LoginDTO) (string, *models.User, error)
-	GetAll() ([]models.User, error)
+	GetAll(role string) ([]models.User, error)
 	GetByID(id string) (*models.User, error)
 	Update(id string, input *models.User) (*models.User, error)
 	Delete(id string) error
@@ -89,8 +89,8 @@ func (s *userService) Login(input dto.LoginDTO) (string, *models.User, error) {
 	return t, user, nil
 }
 
-func (s *userService) GetAll() ([]models.User, error) {
-	return s.repo.GetAll()
+func (s *userService) GetAll(role string) ([]models.User, error) {
+	return s.repo.GetAll(role)
 }
 
 func (s *userService) GetByID(id string) (*models.User, error) {

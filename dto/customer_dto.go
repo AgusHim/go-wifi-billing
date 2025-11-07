@@ -21,4 +21,5 @@ type CreateCustomerDTO struct {
 	Mode          *string  `json:"mode,omitempty" validate:"omitempty"`
 	IDPPOE        *string  `json:"id_ppoe,omitempty"`
 	ProfilePPOE   *string  `json:"profile_ppoe,omitempty"`
+	AdminID       *string  `json:"admin_id,omitempty" validate:"omitempty,uuid4"`
 }

@@ -57,7 +57,8 @@ func (ctrl *UserController) Login(c *fiber.Ctx) error {
 }
 
 func (ctrl *UserController) GetAll(c *fiber.Ctx) error {
-	users, err := ctrl.service.GetAll()
+	role := c.Query("role", "")
+	users, err := ctrl.service.GetAll(role)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

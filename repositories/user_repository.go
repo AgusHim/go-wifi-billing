@@ -11,7 +11,7 @@ type UserRepository interface {
 	Create(user *models.User) error
 	GetByEmail(email string) (*models.User, error)
 	GetByID(id uuid.UUID) (*models.User, error)
-	GetAll() ([]models.User, error)
+	GetAll(role string) ([]models.User, error)
 	Update(user *models.User) error
 	Delete(id uuid.UUID) error
 	CheckIsRegistered(email string, phone string) (*models.User, error)
@@ -47,9 +47,13 @@ func (r *userRepository) GetByID(id uuid.UUID) (*models.User, error) {
 	return &u, nil
 }
 
-func (r *userRepository) GetAll() ([]models.User, error) {
+func (r *userRepository) GetAll(role string) ([]models.User, error) {
 	var users []models.User
-	err := r.db.Find(&users).Error
+	query := r.db
+	if role != "" {
+		query = query.Where("role = ?", role)
+	}
+	err := query.Find(&users).Error
 	return users, err
 }
 
