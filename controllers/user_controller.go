@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"strconv"
+
 	"github.com/Agushim/go_wifi_billing/dto"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
@@ -57,12 +59,31 @@ func (ctrl *UserController) Login(c *fiber.Ctx) error {
 }
 
 func (ctrl *UserController) GetAll(c *fiber.Ctx) error {
+	search := c.Query("search", "")
 	role := c.Query("role", "")
-	users, err := ctrl.service.GetAll(role)
+	pageStr := c.Query("page", "1")
+	limitStr := c.Query("limit", "10")
+
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
+
+	users, total, err := ctrl.service.GetAll(page, limit, role, search)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
-	return c.JSON(fiber.Map{"success": true, "data": users, "message": "Success get data"})
+	return c.JSON(fiber.Map{
+		"success": true,
+		"meta": fiber.Map{
+			"pagination": fiber.Map{
+				"page":        page,
+				"limit":       limit,
+				"total":       total,
+				"total_pages": int((total + int64(limit) - 1) / int64(limit)),
+			},
+		},
+		"data":    users,
+		"message": "Success get data",
+	})
 }
 
 func (ctrl *UserController) GetByID(c *fiber.Ctx) error {

@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"strings"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
@@ -11,7 +13,7 @@ type UserRepository interface {
 	Create(user *models.User) error
 	GetByEmail(email string) (*models.User, error)
 	GetByID(id uuid.UUID) (*models.User, error)
-	GetAll(role string) ([]models.User, error)
+	GetAll(page int, limit int, role string, search string) ([]models.User, int64, error)
 	Update(user *models.User) error
 	Delete(id uuid.UUID) error
 	CheckIsRegistered(email string, phone string) (*models.User, error)
@@ -47,14 +49,38 @@ func (r *userRepository) GetByID(id uuid.UUID) (*models.User, error) {
 	return &u, nil
 }
 
-func (r *userRepository) GetAll(role string) ([]models.User, error) {
+func (r *userRepository) GetAll(page int, limit int, role string, search string) ([]models.User, int64, error) {
 	var users []models.User
-	query := r.db
+	var total int64
+
+	query := r.db.Model(&models.User{})
+
+	// Filter berdasarkan role jika ada
 	if role != "" {
 		query = query.Where("role = ?", role)
 	}
-	err := query.Find(&users).Error
-	return users, err
+
+	if search != "" {
+		searchPattern := "%" + strings.ToLower(search) + "%"
+		query = query.Where("LOWER(name) LIKE ? OR LOWER(email) LIKE ?", searchPattern, searchPattern)
+	}
+
+	// Hitung total data (tanpa pagination)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Pagination
+	offset := (page - 1) * limit
+	if err := query.
+		Limit(limit).
+		Offset(offset).
+		Order("created_at DESC").
+		Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return users, total, nil
 }
 
 func (r *userRepository) Update(user *models.User) error {

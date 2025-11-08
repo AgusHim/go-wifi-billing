@@ -13,7 +13,7 @@ import (
 
 type CustomerService interface {
 	Create(customer *dto.CreateCustomerDTO) (*models.Customer, error)
-	GetAll() ([]models.Customer, error)
+	GetAll(page, limit int, search string) ([]models.Customer, int64, error)
 	GetByID(id uuid.UUID) (*models.Customer, error)
 	Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*models.Customer, error)
 	Delete(id uuid.UUID) error
@@ -96,8 +96,8 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 	return customer, nil
 }
 
-func (s *customerService) GetAll() ([]models.Customer, error) {
-	return s.repo.FindAll()
+func (s *customerService) GetAll(page, limit int, search string) ([]models.Customer, int64, error) {
+	return s.repo.FindAll(page, limit, search)
 }
 
 func (s *customerService) GetByID(id uuid.UUID) (*models.Customer, error) {
