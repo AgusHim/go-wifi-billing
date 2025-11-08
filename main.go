@@ -68,6 +68,10 @@ func main() {
 	billSvc := services.NewBillService(billRepo, subscriptionRepo)
 	billCtrl := controllers.NewBillController(billSvc)
 
+	complainRepo := repositories.NewComplainRepository(gormDB)
+	complainSvc := services.NewComplainService(complainRepo)
+	complainCtrl := controllers.NewComplainController(complainSvc)
+
 	// Setup Fiber
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
@@ -79,7 +83,7 @@ func main() {
 	}))
 
 	// Register routes for all controllers
-	routes.Setup(app, coverageCtrl, userCtrl, packageCtrl, odcCtrl, odpCtrl, customerCtrl, subscriptionCtrl, billCtrl)
+	routes.Setup(app, coverageCtrl, userCtrl, packageCtrl, odcCtrl, odpCtrl, customerCtrl, subscriptionCtrl, billCtrl, complainCtrl)
 
 	port := os.Getenv("PORT")
 	if port == "" {

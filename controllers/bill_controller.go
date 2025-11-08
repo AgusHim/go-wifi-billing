@@ -16,7 +16,7 @@ func (c *BillController) RegisterRoutes(router fiber.Router) {
 
 	admin_api := router.Group("/admin_api/bills")
 	admin_api.Get("/generate", c.GenerateMonthlyBills)
-	admin_api.Post("/", c.Create)
+	admin_api.Post("/create", c.Create)
 	admin_api.Get("/", c.GetAll)
 	admin_api.Get("/:id", c.GetByID)
 	admin_api.Put("/:id", c.Update)

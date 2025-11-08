@@ -15,6 +15,7 @@ func Setup(
 	customerCtrl *controllers.CustomerController,
 	subscriptionCtrl *controllers.SubscriptionController,
 	billCtrl *controllers.BillController,
+	complainCtrl *controllers.ComplainController,
 ) {
 
 	coverageCtrl.RegisterRoutes(app)
@@ -25,6 +26,7 @@ func Setup(
 	customerCtrl.RegisterRoutes(app)
 	subscriptionCtrl.RegisterRoutes(app)
 	billCtrl.RegisterRoutes(app)
+	complainCtrl.RegisterRoutes(app)
 
 	// health
 	app.Get("/health", func(c *fiber.Ctx) error {
