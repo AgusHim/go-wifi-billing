@@ -16,6 +16,8 @@ type Bill struct {
 	DueDate        time.Time      `json:"due_date"`
 	TerminatedDate *time.Time     `json:"terminated_date"`
 	Amount         int            `json:"amount"`
+	PPN            int            `json:"ppn"`
+	UniqueCode     int            `json:"unique_code"`
 	Status         string         `json:"status"` // unpaid, paid, overdue
 	AdminID        *uuid.UUID     `gorm:"type:uuid" json:"admin_id"`
 	CreatedAt      time.Time      `json:"created_at"`

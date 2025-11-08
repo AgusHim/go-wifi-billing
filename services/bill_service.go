@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
@@ -80,7 +81,6 @@ func (s *billService) GenerateMonthlyBills() error {
 	for _, sub := range subs {
 		// Cek apakah sudah ada bill bulan ini
 		existing, err := s.repo.FindBillByCustomerAndMonth(sub.CustomerID.String(), currentMonth, currentYear)
-		log.Printf("Checking bill for customer %s in %d-%02d: %v, %v", sub.CustomerID.String(), currentYear, currentMonth, existing, err)
 
 		if err == nil && existing != nil {
 			continue // sudah ada bill bulan ini
@@ -96,8 +96,16 @@ func (s *billService) GenerateMonthlyBills() error {
 		}
 
 		amount := sub.Package.Price
+		ppn := int(float64(sub.Package.Price) * 0.11)
 		if sub.IsIncludePPN {
 			amount = int(float64(amount) * 1.11) // tambahkan 11% PPN
+		}
+
+		// ✅ Generate unique code (001–500)
+		uniqueCode := 0
+		if sub.IsActiveUniqueCode {
+			uniqueCode = rand.Intn(799) + 1 // hasil 1–500
+			amount += uniqueCode            // tambahkan ke total
 		}
 
 		bill := &models.Bill{
@@ -108,6 +116,8 @@ func (s *billService) GenerateMonthlyBills() error {
 			BillDate:       billDate,
 			DueDate:        dueDate,
 			Amount:         amount,
+			PPN:            ppn,
+			UniqueCode:     uniqueCode,
 			Status:         "unpaid",
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
