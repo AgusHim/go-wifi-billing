@@ -10,7 +10,8 @@ import (
 
 type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
-	FindAll(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
+	FindAll(page, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error)
+	FindForBill(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
 	Update(subscription *models.Subscription) error
 	Delete(id uuid.UUID) error
@@ -28,7 +29,54 @@ func (r *subscriptionRepository) Create(subscription *models.Subscription) error
 	return r.db.Create(subscription).Error
 }
 
-func (r *subscriptionRepository) FindAll(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error) {
+func (r *subscriptionRepository) FindAll(page, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error) {
+	var (
+		subscriptions []models.Subscription
+		total         int64
+	)
+
+	query := r.db.Model(&models.Subscription{}).
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Package")
+
+	// Filter by CustomerID
+	if customerID != nil && *customerID != "" {
+		query = query.Where("customer_id = ?", *customerID)
+	}
+
+	// Filter by Status
+	if status != nil && *status != "" {
+		query = query.Where("status = ?", *status)
+	}
+
+	// Search by related user name or email
+	if search != "" {
+		searchPattern := "%" + search + "%"
+		query = query.Joins("JOIN customers ON customers.id = subscriptions.customer_id").
+			Joins("JOIN users ON users.id = customers.user_id").
+			Where("users.name ILIKE ? OR users.email ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Hitung total data (tanpa pagination)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Pagination
+	offset := (page - 1) * limit
+	if err := query.
+		Limit(limit).
+		Offset(offset).
+		Order("created_at DESC").
+		Find(&subscriptions).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return subscriptions, total, nil
+}
+
+func (r *subscriptionRepository) FindForBill(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error) {
 	var subscriptions []models.Subscription
 	query := r.db
 	if customerID != nil && *customerID != "" {

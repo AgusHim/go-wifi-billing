@@ -49,7 +49,7 @@ func (r *billRepository) Create(bill *models.Bill) error {
 }
 
 func (r *billRepository) Update(bill *models.Bill) error {
-	return r.db.Save(bill).Error
+	return r.db.Omit("Subscription").Save(bill).Error
 }
 
 func (r *billRepository) Delete(id string) error {

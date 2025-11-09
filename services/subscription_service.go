@@ -8,7 +8,7 @@ import (
 
 type SubscriptionService interface {
 	Create(subscription *models.Subscription) error
-	GetAll(customerID *string) ([]models.Subscription, error)
+	GetAll(page int, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error)
 	GetByID(id uuid.UUID) (*models.Subscription, error)
 	Update(id uuid.UUID, input *models.Subscription) (*models.Subscription, error)
 	Delete(id uuid.UUID) error
@@ -26,8 +26,8 @@ func (s *subscriptionService) Create(subscription *models.Subscription) error {
 	return s.repo.Create(subscription)
 }
 
-func (s *subscriptionService) GetAll(customerID *string) ([]models.Subscription, error) {
-	return s.repo.FindAll(customerID, nil, false)
+func (s *subscriptionService) GetAll(page int, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error) {
+	return s.repo.FindAll(page, limit, search, customerID, status)
 }
 
 func (s *subscriptionService) GetByID(id uuid.UUID) (*models.Subscription, error) {

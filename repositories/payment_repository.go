@@ -23,13 +23,25 @@ func NewPaymentRepository(db *gorm.DB) PaymentRepository {
 
 func (r *paymentRepository) FindAll() ([]models.Payment, error) {
 	var payments []models.Payment
-	err := r.db.Preload("Bill").Find(&payments).Error
+	err := r.db.
+		Preload("Bill").
+		Preload("Bill.Customer.User").
+		Preload("Bill.Subscription").
+		Preload("Bill.Subscription.Package").
+		Preload("Admin").
+		Find(&payments).Error
 	return payments, err
 }
 
 func (r *paymentRepository) FindByID(id string) (models.Payment, error) {
 	var payment models.Payment
-	err := r.db.Preload("Bill").First(&payment, "id = ?", id).Error
+	err := r.db.
+		Preload("Bill").
+		Preload("Bill.Customer.User").
+		Preload("Bill.Subscription").
+		Preload("Bill.Subscription.Package").
+		Preload("Admin").
+		First(&payment, "id = ?", id).Error
 	return payment, err
 }
 
@@ -38,7 +50,7 @@ func (r *paymentRepository) Create(payment *models.Payment) error {
 }
 
 func (r *paymentRepository) Update(payment *models.Payment) error {
-	return r.db.Save(payment).Error
+	return r.db.Omit("Bill").Save(payment).Error
 }
 
 func (r *paymentRepository) Delete(id string) error {

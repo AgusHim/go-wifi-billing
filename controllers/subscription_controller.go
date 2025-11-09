@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"strconv"
+
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -39,12 +41,29 @@ func (c *SubscriptionController) Create(ctx *fiber.Ctx) error {
 
 func (c *SubscriptionController) GetAll(ctx *fiber.Ctx) error {
 	customerID := ctx.Query("customer_id", "")
+	status := ctx.Query("status", "")
+	pageStr := ctx.Query("page", "1")
+	limitStr := ctx.Query("limit", "10")
+	search := ctx.Query("search", "")
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
 
-	subscriptions, err := c.service.GetAll(&customerID)
+	subscriptions, total, err := c.service.GetAll(page, limit, search, &customerID, &status)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
-	return ctx.JSON(fiber.Map{"success": true, "data": subscriptions, "message": "Success get data"})
+	return ctx.JSON(fiber.Map{
+		"success": true, "meta": fiber.Map{
+			"pagination": fiber.Map{
+				"page":        page,
+				"limit":       limit,
+				"total":       total,
+				"total_pages": int((total + int64(limit) - 1) / int64(limit)),
+			},
+		},
+		"data":    subscriptions,
+		"message": "Success get data",
+	})
 }
 
 func (c *SubscriptionController) GetByID(ctx *fiber.Ctx) error {

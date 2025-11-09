@@ -98,7 +98,7 @@ func (c *ComplainController) Update(ctx *fiber.Ctx) error {
 		})
 	}
 	var payload models.Complain
-	if err := ctx.BodyParser(&payload); err != nil {
+	if err = ctx.BodyParser(&payload); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"success": false,
 			"data":    nil,

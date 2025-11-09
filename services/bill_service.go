@@ -67,7 +67,7 @@ func (s *billService) Delete(id string) error {
 
 func (s *billService) GenerateMonthlyBills() error {
 	status := "active"
-	subs, err := s.subRepo.FindAll(nil, &status, true)
+	subs, err := s.subRepo.FindForBill(nil, &status, true)
 	log.Printf("Found %d active subscriptions", len(subs))
 	if err != nil {
 		return fmt.Errorf("failed to fetch subscriptions: %w", err)
