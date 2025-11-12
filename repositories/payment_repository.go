@@ -11,6 +11,7 @@ type PaymentRepository interface {
 	Create(payment *models.Payment) error
 	Update(payment *models.Payment) error
 	Delete(id string) error
+	FindByUserID(userID string) ([]models.Payment, error)
 }
 
 type paymentRepository struct {
@@ -55,4 +56,20 @@ func (r *paymentRepository) Update(payment *models.Payment) error {
 
 func (r *paymentRepository) Delete(id string) error {
 	return r.db.Delete(&models.Payment{}, "id = ?", id).Error
+}
+
+func (r *paymentRepository) FindByUserID(userID string) ([]models.Payment, error) {
+	var payments []models.Payment
+	err := r.db.
+		Joins("JOIN bills ON payments.bill_id = bills.id").
+		Joins("JOIN customers ON bills.customer_id = customers.id").
+		Joins("JOIN users ON customers.user_id = users.id").
+		Where("users.id = ?", userID).
+		Preload("Bill").
+		Preload("Bill.Customer.User").
+		Preload("Bill.Subscription").
+		Preload("Bill.Subscription.Package").
+		Preload("Admin").
+		Find(&payments).Error
+	return payments, err
 }

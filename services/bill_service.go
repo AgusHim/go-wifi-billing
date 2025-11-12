@@ -19,6 +19,8 @@ type BillService interface {
 	Update(id string, input models.Bill) (models.Bill, error)
 	Delete(id string) error
 	GenerateMonthlyBills() error
+	GetByPublicID(publicID string) (*models.Bill, error)
+	GetByUserID(userID string) ([]models.Bill, error)
 }
 
 type billService struct {
@@ -45,7 +47,20 @@ func (s *billService) Create(input models.Bill) (models.Bill, error) {
 	err := s.repo.Create(&input)
 	return input, err
 }
-
+func (s *billService) GetByPublicID(publicID string) (*models.Bill, error) {
+    bill, err := s.repo.FindByPublicID(publicID)
+    if err != nil {
+        return nil, err
+    }
+    return bill, nil
+}
+func (s *billService) GetByUserID(userID string) ([]models.Bill, error) {
+    bill, err := s.repo.FindByUserID(userID)
+    if err != nil {
+        return nil, err
+    }
+    return bill, nil
+}
 func (s *billService) Update(id string, input models.Bill) (models.Bill, error) {
 	bill, err := s.repo.FindByID(id)
 	if err != nil {

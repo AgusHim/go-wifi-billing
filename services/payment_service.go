@@ -17,8 +17,12 @@ type PaymentService interface {
 	Create(input models.Payment) (*models.Payment, error)
 	Update(id string, input models.Payment) (*models.Payment, error)
 	Delete(id string) error
+<<<<<<< Updated upstream
 	CreateMidtransTransaction(paymentID string) (*models.Payment, error)
 	HandleMindtransCallback(paymentID string, status string) error
+=======
+	GetByUserID(userID string) ([]models.Payment, error)
+>>>>>>> Stashed changes
 }
 
 type paymentService struct {
@@ -45,6 +49,9 @@ func (s *paymentService) GetAll() ([]models.Payment, error) {
 
 func (s *paymentService) GetByID(id string) (models.Payment, error) {
 	return s.repo.FindByID(id)
+}
+func (s *paymentService) GetByUserID(userID string) ([]models.Payment, error) {
+	return s.repo.FindByUserID(userID)
 }
 
 func (s *paymentService) Create(input models.Payment) (*models.Payment, error) {

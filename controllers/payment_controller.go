@@ -19,7 +19,11 @@ func (c *PaymentController) RegisterRoutes(router fiber.Router) {
 	router.Get("/api/payment/callback", c.MidtransCallback)
 	user_api := router.Group("/user_api/payments")
 	user_api.Get("/", c.GetAll)
+<<<<<<< Updated upstream
 	user_api.Get("/midtrans", c.CreateMidtrans)
+=======
+	user_api.Get("/user/:user_id", c.GetByUserID)
+>>>>>>> Stashed changes
 
 	admin_api := router.Group("/admin_api/payments")
 	admin_api.Post("/", c.Create)
@@ -45,7 +49,20 @@ func (c *PaymentController) GetByID(ctx *fiber.Ctx) error {
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Success get payment"})
 }
+func (c *PaymentController) GetByUserID(ctx *fiber.Ctx) error {
+	userID := ctx.Params("user_id")
 
+	data, err := c.service.GetByUserID(userID)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"data":    data,
+		"message": "Success get payments by user",
+	})
+}
 func (c *PaymentController) Create(ctx *fiber.Ctx) error {
 	var input models.Payment
 	if err := ctx.BodyParser(&input); err != nil {

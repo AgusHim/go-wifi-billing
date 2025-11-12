@@ -8,6 +8,8 @@ import (
 type BillRepository interface {
 	FindAll() ([]models.Bill, error)
 	FindByID(id string) (models.Bill, error)
+	FindByPublicID(publicID string) (*models.Bill, error)
+	FindByUserID(userID string) ([]models.Bill, error)
 	Create(bill *models.Bill) error
 	Update(bill *models.Bill) error
 	Delete(id string) error
@@ -43,6 +45,46 @@ func (r *billRepository) FindByID(id string) (models.Bill, error) {
 		First(&bill, "id = ?", id).Error
 	return bill, err
 }
+func (r *billRepository) FindByUserID(userID string) ([]models.Bill, error) {
+	var bills []models.Bill
+	err := r.db.
+		Joins("JOIN customers ON customers.id = bills.customer_id").
+		Joins("JOIN users ON users.id = customers.user_id").
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package").
+		Where("users.id = ?", userID).
+		Find(&bills).Error
+
+	return bills, err
+}
+
+func (r *billRepository) FindByID(userID string) (models.Bill, error) {
+	var bill models.Bill
+	err := r.db.
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package").
+		First(&bill, "id = ?", userID).Error
+	return bill, err
+}
+func (r *billRepository) FindByPublicID(publicID string) (*models.Bill, error) {
+	var bill models.Bill
+	err := r.db.
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package").
+		First(&bill, "public_id = ?", publicID).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return &bill, nil
+}
+
 
 func (r *billRepository) Create(bill *models.Bill) error {
 	return r.db.Create(bill).Error
