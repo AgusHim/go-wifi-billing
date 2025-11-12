@@ -1,11 +1,14 @@
 package services
 
 import (
+	"log"
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/repositories"
 	"github.com/google/uuid"
+	"github.com/midtrans/midtrans-go"
+	"github.com/midtrans/midtrans-go/snap"
 )
 
 type PaymentService interface {
@@ -14,6 +17,8 @@ type PaymentService interface {
 	Create(input models.Payment) (*models.Payment, error)
 	Update(id string, input models.Payment) (*models.Payment, error)
 	Delete(id string) error
+	CreateMidtransTransaction(paymentID string) (*models.Payment, error)
+	HandleMindtransCallback(paymentID string, status string) error
 }
 
 type paymentService struct {
@@ -166,4 +171,68 @@ func (s *paymentService) RollbackBillAndSubs(bill models.Bill) (*models.Bill, *m
 	}
 
 	return &bill, subs, nil
+}
+
+func (s *paymentService) CreateMidtransTransaction(paymentID string) (*models.Payment, error) {
+	payment, err := s.repo.FindByID(paymentID)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &snap.Request{
+		TransactionDetails: midtrans.TransactionDetails{
+			OrderID:  payment.ID.String(),
+			GrossAmt: int64(payment.Amount),
+		},
+		CustomerDetail: &midtrans.CustomerDetails{
+			FName: payment.Bill.Customer.User.Name,
+			Email: payment.Bill.Customer.User.Email,
+		},
+	}
+
+	snapResp, nerr := snap.CreateTransaction(req)
+	if nerr != nil {
+		log.Println("Midtrans error:", nerr)
+		return nil, nerr
+	}
+	payment.RefID = snapResp.Token
+	payment.PaymentUrl = &snapResp.RedirectURL
+	return &payment, nil
+}
+
+func (s *paymentService) HandleMindtransCallback(paymentID string, status string) error {
+	payment, err := s.repo.FindByID(paymentID)
+	if err != nil {
+		return err
+	}
+	payment_status := getStatus(status)
+	payment.Status = payment_status
+
+	// Update Bill And Subscription
+	if payment.Status == "confirmed" {
+		bill, nerr := s.billRepo.FindByID(payment.BillID.String())
+		if nerr != nil {
+			return nerr
+		}
+		nbill, nsubs, nerr := s.UpdateBillAndSubs(payment, bill)
+		if nerr != nil {
+			return nerr
+		}
+		payment.Bill = *nbill
+		payment.Bill.Subscription = *nsubs
+	}
+
+	err = s.repo.Update(&payment)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+func getStatus(status string) string {
+	if status == "settlement" || status == "capture" {
+		return "confirmed"
+	} else {
+		return status
+	}
 }

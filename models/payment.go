@@ -15,6 +15,7 @@ type Payment struct {
 	DueDate     time.Time      `json:"due_date"`
 	ExpiredDate time.Time      `json:"expired_date"`
 	Method      string         `json:"method"` // bank_transfer, ewallet, cash
+	PaymentUrl  *string        `json:"payment_url"`
 	Amount      int            `json:"amount"`
 	Status      string         `json:"status"` // pending, confirmed, failed
 	AdminID     *uuid.UUID     `gorm:"type:uuid" json:"admin_id"`

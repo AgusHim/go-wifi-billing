@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"github.com/Agushim/go_wifi_billing/lib"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -15,8 +16,10 @@ func NewPaymentController(service services.PaymentService) *PaymentController {
 }
 
 func (c *PaymentController) RegisterRoutes(router fiber.Router) {
+	router.Get("/api/payment/callback", c.MidtransCallback)
 	user_api := router.Group("/user_api/payments")
 	user_api.Get("/", c.GetAll)
+	user_api.Get("/midtrans", c.CreateMidtrans)
 
 	admin_api := router.Group("/admin_api/payments")
 	admin_api.Post("/", c.Create)
@@ -74,4 +77,56 @@ func (c *PaymentController) Delete(ctx *fiber.Ctx) error {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "message": "Payment deleted successfully"})
+}
+
+func (c *PaymentController) CreateMidtrans(ctx *fiber.Ctx) error {
+	id := ctx.Params("id")
+	data, err := c.service.CreateMidtransTransaction(id)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Payment updated successfully"})
+}
+
+func (c *PaymentController) MidtransCallback(ctx *fiber.Ctx) error {
+	type NotificationPayload struct {
+		TransactionStatus string `json:"transaction_status"`
+		OrderID           string `json:"order_id"`
+		GrossAmount       string `json:"gross_amount"`
+		PaymentType       string `json:"payment_type"`
+		FraudStatus       string `json:"fraud_status"`
+		SignatureKey      string `json:"signature_key"`
+		StatusCode        string `json:"status_code"`
+	}
+
+	var payload NotificationPayload
+	if err := ctx.BodyParser(&payload); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "Invalid callback payload",
+		})
+	}
+
+	expectedSig := lib.GenerateSignature(payload.OrderID, payload.StatusCode, payload.GrossAmount)
+	if expectedSig != payload.SignatureKey {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "Invalid signature key",
+		})
+	}
+
+	// TODO: update status pembayaran di DB
+	// contoh update order di DB pakai GORM
+	err := c.service.HandleMindtransCallback(payload.OrderID, payload.TransactionStatus)
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "Failed to update payment status",
+		})
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"message": "Payment status updated",
+	})
 }
