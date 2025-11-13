@@ -11,7 +11,7 @@ import (
 func GetMidtransAuth() string {
 	// Misalnya ini adalah value dari env.My_Server_Key
 	serverKey := os.Getenv("MIDTRANS_SERVER_KEY")
-
+	
 	// Gabungkan dengan titik dua di akhir sesuai string aslinya
 	raw := fmt.Sprintf("%s:", serverKey)
 

@@ -23,6 +23,10 @@ func main() {
 	}
 	dsn := os.Getenv("POSTGRES_URL")
 	log.Printf("dsn: %s", dsn)
+
+	midtrans_server := os.Getenv("MIDTRANS_SERVER_KEY")
+	log.Printf("midtrans_server: %s", midtrans_server)
+
 	gormDB, err := db.InitDB(dsn)
 	if err != nil {
 		log.Fatalf("failed to init db: %v", err)

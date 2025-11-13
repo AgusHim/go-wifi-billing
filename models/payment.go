@@ -26,3 +26,4 @@ type Payment struct {
 	Bill  Bill `json:"bill" gorm:"foreignKey:BillID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" `
 	Admin User `json:"admin" gorm:"foreignKey:AdminID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" `
 }
+

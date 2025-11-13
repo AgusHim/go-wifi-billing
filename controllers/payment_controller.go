@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"github.com/Agushim/go_wifi_billing/dto"
 	"github.com/Agushim/go_wifi_billing/lib"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
@@ -16,10 +17,10 @@ func NewPaymentController(service services.PaymentService) *PaymentController {
 }
 
 func (c *PaymentController) RegisterRoutes(router fiber.Router) {
-	router.Get("/api/payment/callback", c.MidtransCallback)
+	router.Get("/api/payments/callback", c.MidtransCallback)
 	user_api := router.Group("/user_api/payments")
 	user_api.Get("/", c.GetAll)
-	user_api.Get("/midtrans", c.CreateMidtrans)
+	user_api.Post("/midtrans", c.CreateMidtrans)
 	user_api.Get("/user/:user_id", c.GetByUserID)
 
 	admin_api := router.Group("/admin_api/payments")
@@ -94,8 +95,11 @@ func (c *PaymentController) Delete(ctx *fiber.Ctx) error {
 }
 
 func (c *PaymentController) CreateMidtrans(ctx *fiber.Ctx) error {
-	id := ctx.Params("id")
-	data, err := c.service.CreateMidtransTransaction(id)
+	var input dto.CreateMidtransPayment
+	if err := ctx.BodyParser(&input); err != nil {
+		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	data, err := c.service.CreateMidtransTransaction(input.BillID)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

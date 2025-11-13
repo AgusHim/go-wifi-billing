@@ -2,6 +2,7 @@ package services
 
 import (
 	"log"
+	"os"
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
@@ -33,6 +34,14 @@ func NewPaymentService(
 	subcRepo repositories.SubscriptionRepository,
 	billRepo repositories.BillRepository,
 ) PaymentService {
+	env := os.Getenv("MIDTRANS_ENV")
+	if env == "sandbox" {
+		midtrans.Environment = midtrans.Sandbox
+	} else {
+		midtrans.Environment = midtrans.Production
+	}
+	midtrans.ServerKey = os.Getenv("MIDTRANS_SERVER_KEY")
+	midtrans.ClientKey = os.Getenv("MIDTRANS_CLIENT_KEY")
 	return &paymentService{
 		repo,
 		subcRepo,
@@ -177,12 +186,28 @@ func (s *paymentService) RollbackBillAndSubs(bill models.Bill) (*models.Bill, *m
 	return &bill, subs, nil
 }
 
-func (s *paymentService) CreateMidtransTransaction(paymentID string) (*models.Payment, error) {
-	payment, err := s.repo.FindByID(paymentID)
+func (s *paymentService) CreateMidtransTransaction(billID string) (*models.Payment, error) {
+	bill, err := s.billRepo.FindByID(billID)
 	if err != nil {
 		return nil, err
 	}
 
+	now := time.Now()
+	var payment models.Payment
+	payment.Bill = bill
+	payment.ID = uuid.New()
+	payment.BillID = bill.ID
+	payment.PaymentDate = now
+	payment.DueDate = bill.DueDate
+	payment.ExpiredDate = now.AddDate(0, 0, 1)
+	payment.Method = "midtrans"
+	payment.Amount = bill.Amount
+	payment.Status = "pending"
+	payment.AdminID = nil
+	payment.CreatedAt = now
+	payment.UpdatedAt = now
+
+	// Create midtrans payment
 	req := &snap.Request{
 		TransactionDetails: midtrans.TransactionDetails{
 			OrderID:  payment.ID.String(),
@@ -201,6 +226,12 @@ func (s *paymentService) CreateMidtransTransaction(paymentID string) (*models.Pa
 	}
 	payment.RefID = snapResp.Token
 	payment.PaymentUrl = &snapResp.RedirectURL
+
+	err = s.repo.Create(&payment)
+	if err != nil {
+		return nil, err
+	}
+
 	return &payment, nil
 }
 
