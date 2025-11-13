@@ -60,16 +60,6 @@ func (r *billRepository) FindByUserID(userID string) ([]models.Bill, error) {
 	return bills, err
 }
 
-func (r *billRepository) FindByID(userID string) (models.Bill, error) {
-	var bill models.Bill
-	err := r.db.
-		Preload("Customer").
-		Preload("Customer.User").
-		Preload("Subscription").
-		Preload("Subscription.Package").
-		First(&bill, "id = ?", userID).Error
-	return bill, err
-}
 func (r *billRepository) FindByPublicID(publicID string) (*models.Bill, error) {
 	var bill models.Bill
 	err := r.db.

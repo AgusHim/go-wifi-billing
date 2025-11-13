@@ -19,11 +19,8 @@ func (c *PaymentController) RegisterRoutes(router fiber.Router) {
 	router.Get("/api/payment/callback", c.MidtransCallback)
 	user_api := router.Group("/user_api/payments")
 	user_api.Get("/", c.GetAll)
-<<<<<<< Updated upstream
 	user_api.Get("/midtrans", c.CreateMidtrans)
-=======
 	user_api.Get("/user/:user_id", c.GetByUserID)
->>>>>>> Stashed changes
 
 	admin_api := router.Group("/admin_api/payments")
 	admin_api.Post("/", c.Create)

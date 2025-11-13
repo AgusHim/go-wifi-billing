@@ -17,12 +17,9 @@ type PaymentService interface {
 	Create(input models.Payment) (*models.Payment, error)
 	Update(id string, input models.Payment) (*models.Payment, error)
 	Delete(id string) error
-<<<<<<< Updated upstream
 	CreateMidtransTransaction(paymentID string) (*models.Payment, error)
 	HandleMindtransCallback(paymentID string, status string) error
-=======
 	GetByUserID(userID string) ([]models.Payment, error)
->>>>>>> Stashed changes
 }
 
 type paymentService struct {
