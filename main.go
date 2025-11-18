@@ -83,7 +83,7 @@ func main() {
 	// Setup Fiber
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:3000, https://localhost:3000, http://103.103.22.212, https://103.103.22.212, https://103.103.22.212:3000",
+		AllowOrigins:     "http://localhost:3000, https://localhost:3000, https://cantika.net, https://www.cantika.net",
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		ExposeHeaders:    "Content-Length",
