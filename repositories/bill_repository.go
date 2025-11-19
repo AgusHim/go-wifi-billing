@@ -67,14 +67,13 @@ func (r *billRepository) FindByPublicID(publicID string) (*models.Bill, error) {
 		Preload("Customer.User").
 		Preload("Subscription").
 		Preload("Subscription.Package").
-		First(&bill, "public_id = ?", publicID).Error
+		First(&bill, "LOWER(public_id) = LOWER(?)", publicID).Error
 
 	if err != nil {
 		return nil, err
 	}
 	return &bill, nil
 }
-
 
 func (r *billRepository) Create(bill *models.Bill) error {
 	return r.db.Create(bill).Error

@@ -11,9 +11,12 @@ type BillController struct {
 }
 
 func (c *BillController) RegisterRoutes(router fiber.Router) {
+	api := router.Group("/api/bills")
+	api.Get("/:public_id", c.GetByPublicID)
+
 	user_api := router.Group("/user_api/bills")
 	user_api.Get("/", c.GetAll)
-user_api.Get("/public/:public_id", c.GetByPublicID)
+	user_api.Get("/public/:public_id", c.GetByPublicID)
 	admin_api := router.Group("/admin_api/bills")
 	admin_api.Get("/generate", c.GenerateMonthlyBills)
 	admin_api.Post("/create", c.Create)
@@ -44,27 +47,27 @@ func (c *BillController) GetByID(ctx *fiber.Ctx) error {
 	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Success get bill"})
 }
 func (c *BillController) GetByPublicID(ctx *fiber.Ctx) error {
-    publicID := ctx.Params("public_id")
-    if publicID == "" {
-        return ctx.Status(400).JSON(fiber.Map{
-            "success": false,
-            "message": "Public ID wajib diisi",
-        })
-    }
+	publicID := ctx.Params("public_id")
+	if publicID == "" {
+		return ctx.Status(400).JSON(fiber.Map{
+			"success": false,
+			"message": "Public ID wajib diisi",
+		})
+	}
 
-    data, err := c.service.GetByPublicID(publicID)
-    if err != nil {
-        return ctx.Status(404).JSON(fiber.Map{
-            "success": false,
-            "message": "Tagihan tidak ditemukan",
-        })
-    }
+	data, err := c.service.GetByPublicID(publicID)
+	if err != nil {
+		return ctx.Status(404).JSON(fiber.Map{
+			"success": false,
+			"message": "Tagihan tidak ditemukan",
+		})
+	}
 
-    return ctx.JSON(fiber.Map{
-        "success": true,
-        "data":    data,
-        "message": "Success get bill by public ID",
-    })
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"data":    data,
+		"message": "Success get bill by public ID",
+	})
 }
 func (c *BillController) GetByUserID(ctx *fiber.Ctx) error {
 	userID := ctx.Locals("user_id")
