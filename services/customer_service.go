@@ -15,6 +15,7 @@ type CustomerService interface {
 	Create(customer *dto.CreateCustomerDTO) (*models.Customer, error)
 	GetAll(page, limit int, search string) ([]models.Customer, int64, error)
 	GetByID(id uuid.UUID) (*models.Customer, error)
+	FindByUserID(userID uuid.UUID) (*models.Customer, error)
 	Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*models.Customer, error)
 	Delete(id uuid.UUID) error
 }
@@ -103,6 +104,11 @@ func (s *customerService) GetAll(page, limit int, search string) ([]models.Custo
 func (s *customerService) GetByID(id uuid.UUID) (*models.Customer, error) {
 	return s.repo.FindByID(id)
 }
+
+func (s *customerService) FindByUserID(userID uuid.UUID) (*models.Customer, error) {
+	return s.repo.FindByUserID(userID)
+}
+
 
 func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*models.Customer, error) {
 	existing, err := s.repo.FindByID(id)

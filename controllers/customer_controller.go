@@ -21,6 +21,7 @@ func NewCustomerController(service services.CustomerService) *CustomerController
 func (c *CustomerController) RegisterRoutes(router fiber.Router) {
 	r := router.Group("/admin_api/customers")
 	r.Get("/", c.GetAll)
+	r.Get("/by_user/:user_id", c.GetByUserID)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)
 	r.Put("/:id", c.Update)
@@ -78,6 +79,32 @@ func (c *CustomerController) GetByID(ctx *fiber.Ctx) error {
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": customer, "message": "Success get data"})
 }
+
+func (c *CustomerController) GetByUserID(ctx *fiber.Ctx) error {
+	userIDStr := ctx.Params("user_id")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return ctx.Status(400).JSON(fiber.Map{
+			"success": false,
+			"message": "Invalid user_id",
+		})
+	}
+
+	customer, err := c.service.FindByUserID(userID)
+	if err != nil {
+		return ctx.Status(404).JSON(fiber.Map{
+			"success": false,
+			"message": "Customer not found",
+		})
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"data":    customer,
+		"message": "Success get data",
+	})
+}
+
 
 func (c *CustomerController) Update(ctx *fiber.Ctx) error {
 	id, err := uuid.Parse(ctx.Params("id"))

@@ -10,6 +10,7 @@ type SubscriptionService interface {
 	Create(subscription *models.Subscription) error
 	GetAll(page int, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error)
 	GetByID(id uuid.UUID) (*models.Subscription, error)
+	FindByCustomerID(customerID string) ([]models.Subscription, error)
 	Update(id uuid.UUID, input *models.Subscription) (*models.Subscription, error)
 	Delete(id uuid.UUID) error
 }
@@ -32,6 +33,18 @@ func (s *subscriptionService) GetAll(page int, limit int, search string, custome
 
 func (s *subscriptionService) GetByID(id uuid.UUID) (*models.Subscription, error) {
 	return s.repo.FindByID(id)
+}
+func (s *subscriptionService) FindByCustomerID(customerID string) ([]models.Subscription, error) {
+    // repo butuh pointer string
+    customerIDPtr := &customerID
+
+    // call repository without pagination & search
+    subs, _, err := s.repo.FindAll(1, 9999, "", customerIDPtr, nil)
+    if err != nil {
+        return nil, err
+    }
+
+    return subs, nil
 }
 
 func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) (*models.Subscription, error) {

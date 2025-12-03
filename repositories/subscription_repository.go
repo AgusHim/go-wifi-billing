@@ -13,6 +13,7 @@ type SubscriptionRepository interface {
 	FindAll(page, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error)
 	FindForBill(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
+	FindByCustomerID(customerID uuid.UUID) (*models.Subscription, error)
 	Update(subscription *models.Subscription) error
 	Delete(id uuid.UUID) error
 }
@@ -106,6 +107,22 @@ func (r *subscriptionRepository) FindByID(id uuid.UUID) (*models.Subscription, e
 		Preload("Package").
 		First(&subscription, "id = ?", id).Error
 	return &subscription, err
+}
+func (r *subscriptionRepository) FindByCustomerID(customerID uuid.UUID) (*models.Subscription, error) {
+	var subscription models.Subscription
+
+	err := r.db.
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Package").
+		Where("customer_id = ?", customerID).
+		First(&subscription).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &subscription, nil
 }
 
 func (r *subscriptionRepository) Update(subscription *models.Subscription) error {

@@ -13,6 +13,7 @@ type CustomerRepository interface {
 	Create(customer *models.Customer) error
 	FindAll(page, limit int, search string) ([]models.Customer, int64, error)
 	FindByID(id uuid.UUID) (*models.Customer, error)
+	FindByUserID(userID uuid.UUID) (*models.Customer, error)
 	Update(customer *models.Customer) error
 	Delete(id uuid.UUID) error
 }
@@ -74,6 +75,24 @@ func (r *customerRepository) FindByID(id uuid.UUID) (*models.Customer, error) {
 		Preload("Odp").
 		First(&customer, "id = ?", id).Error
 	return &customer, err
+}
+
+func (r *customerRepository) FindByUserID(userID uuid.UUID) (*models.Customer, error) {
+	var customer models.Customer
+
+	err := r.db.
+		Preload("User").
+		Preload("Admin").
+		Preload("Coverage").
+		Preload("Odc").
+		Preload("Odp").
+		First(&customer, "user_id = ?", userID).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &customer, nil
 }
 
 func (r *customerRepository) Update(customer *models.Customer) error {

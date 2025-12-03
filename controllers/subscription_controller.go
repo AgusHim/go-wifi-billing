@@ -21,6 +21,7 @@ func (c *SubscriptionController) RegisterRoutes(router fiber.Router) {
 	r := router.Group("/admin_api/subscriptions")
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
+	r.Get("/customer/:customer_id", c.GetByCustomerID)
 	r.Post("/", c.Create)
 	r.Put("/:id", c.Update)
 	r.Delete("/:id", c.Delete)
@@ -76,6 +77,23 @@ func (c *SubscriptionController) GetByID(ctx *fiber.Ctx) error {
 		return ctx.Status(404).JSON(fiber.Map{"success": false, "message": "Subscription not found"})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": subscription, "message": "Success get data"})
+}
+func (c *SubscriptionController) GetByCustomerID(ctx *fiber.Ctx) error {
+	customerID := ctx.Params("customer_id")
+	if customerID == "" {
+		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": "Customer ID is required"})
+	}
+
+	subscriptions, err := c.service.FindByCustomerID(customerID)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"data":    subscriptions,
+		"message": "Success get subscriptions by customer",
+	})
 }
 
 func (c *SubscriptionController) Update(ctx *fiber.Ctx) error {
