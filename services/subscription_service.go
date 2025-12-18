@@ -62,6 +62,7 @@ func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) (
 	existing.IsIncludePPN = input.IsIncludePPN
 	existing.Status = input.Status
 	existing.Description = input.Description
+	existing.DueDay = input.DueDay
 
 	err = s.repo.Update(existing)
 	if err != nil {

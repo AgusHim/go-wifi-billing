@@ -19,6 +19,7 @@ func (c *BillController) RegisterRoutes(router fiber.Router) {
 	user_api.Get("/public/:public_id", c.GetByPublicID)
 	admin_api := router.Group("/admin_api/bills")
 	admin_api.Get("/generate", c.GenerateMonthlyBills)
+	admin_api.Get("/send-reminders", c.SendReminders)
 	admin_api.Post("/create", c.Create)
 	admin_api.Get("/", c.GetAll)
 	admin_api.Get("/:id", c.GetByID)
@@ -131,4 +132,12 @@ func (c *BillController) GenerateMonthlyBills(ctx *fiber.Ctx) error {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "message": "Monthly bills generated successfully"})
+}
+
+func (c *BillController) SendReminders(ctx *fiber.Ctx) error {
+	result, err := c.service.SendReminders()
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": result, "message": "Reminders sent successfully"})
 }

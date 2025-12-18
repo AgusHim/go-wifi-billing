@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/repositories"
+	"github.com/Agushim/go_wifi_billing/utils"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -21,15 +22,18 @@ type BillService interface {
 	GenerateMonthlyBills() error
 	GetByPublicID(publicID string) (*models.Bill, error)
 	GetByUserID(userID string) ([]models.Bill, error)
+	GetUnpaidBills() ([]models.Bill, error)
+	SendReminders() (map[string]interface{}, error)
 }
 
 type billService struct {
 	repo    repositories.BillRepository
 	subRepo repositories.SubscriptionRepository
+	waSvc   WhatsAppService
 }
 
-func NewBillService(repo repositories.BillRepository, subRepo repositories.SubscriptionRepository) BillService {
-	return &billService{repo, subRepo}
+func NewBillService(repo repositories.BillRepository, subRepo repositories.SubscriptionRepository, waSvc WhatsAppService) BillService {
+	return &billService{repo, subRepo, waSvc}
 }
 
 func (s *billService) GetAll() ([]models.Bill, error) {
@@ -48,18 +52,18 @@ func (s *billService) Create(input models.Bill) (models.Bill, error) {
 	return input, err
 }
 func (s *billService) GetByPublicID(publicID string) (*models.Bill, error) {
-    bill, err := s.repo.FindByPublicID(publicID)
-    if err != nil {
-        return nil, err
-    }
-    return bill, nil
+	bill, err := s.repo.FindByPublicID(publicID)
+	if err != nil {
+		return nil, err
+	}
+	return bill, nil
 }
 func (s *billService) GetByUserID(userID string) ([]models.Bill, error) {
-    bill, err := s.repo.FindByUserID(userID)
-    if err != nil {
-        return nil, err
-    }
-    return bill, nil
+	bill, err := s.repo.FindByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	return bill, nil
 }
 func (s *billService) Update(id string, input models.Bill) (models.Bill, error) {
 	bill, err := s.repo.FindByID(id)
@@ -145,5 +149,112 @@ func (s *billService) GenerateMonthlyBills() error {
 		}
 	}
 
+	go func() {
+		log.Println("[WA] Sending reminders in background...")
+		if _, err := s.SendReminders(); err != nil {
+			log.Printf("[WA] Failed sending reminders: %v", err)
+		}
+	}()
+
 	return nil
+}
+
+func (s *billService) GetUnpaidBills() ([]models.Bill, error) {
+	return s.repo.FindUnpaidBills()
+}
+
+func (s *billService) SendReminders() (map[string]interface{}, error) {
+	bills, err := s.repo.FindUnpaidBills()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch unpaid bills: %w", err)
+	}
+
+	stats := newReminderStats(len(bills))
+
+	baseTime := time.Now()
+	delayIndex := 1
+
+	for _, bill := range bills {
+		phone, ok := s.getValidPhone(bill)
+		if !ok {
+			stats.skipped++
+			continue
+		}
+
+		billMessage := utils.BuildBillMessage(bill)
+		reminderMessage := utils.BuildReminderMessage(bill)
+		billSendTime := baseTime.Add(time.Duration(delayIndex*3) * time.Second)
+		reminderSendTime := bill.DueDate.Add(time.Duration(delayIndex*3) * time.Second)
+
+		if err := s.waSvc.SendScheduledMessage(phone, billMessage, billSendTime); err != nil {
+			stats.failed++
+			stats.addError(phone, bill.PublicID, err)
+			continue
+		}
+
+		if err := s.waSvc.SendScheduledMessage(phone, reminderMessage, reminderSendTime); err != nil {
+			stats.failed++
+			stats.addError(phone, bill.PublicID, err)
+			continue
+		}
+
+		stats.sent++
+		delayIndex++
+		log.Printf("Sent reminder for bill %s to %s", bill.PublicID, phone)
+	}
+
+	return stats.toMap(), nil
+}
+
+func (s *billService) getValidPhone(bill models.Bill) (string, bool) {
+	if bill.Customer.User == nil || !bill.Customer.IsSendWa {
+		return "", false
+	}
+
+	rawPhone := bill.Customer.User.Phone
+	if rawPhone == "" {
+		log.Printf("Skipping bill %s: customer has no phone number", bill.PublicID)
+		return "", false
+	}
+
+	phone := utils.NormalizeIDPhone(rawPhone)
+	if phone == "" {
+		log.Printf("Skipping bill %s: invalid phone number %q", bill.PublicID, rawPhone)
+		return "", false
+	}
+
+	return phone, true
+}
+
+type reminderStats struct {
+	total   int
+	sent    int
+	skipped int
+	failed  int
+	errors  []string
+}
+
+func newReminderStats(total int) *reminderStats {
+	return &reminderStats{total: total}
+}
+
+func (r *reminderStats) addError(phone, billID string, err error) {
+	r.errors = append(r.errors,
+		fmt.Sprintf("Failed to send to %s (bill %s): %v", phone, billID, err),
+	)
+}
+
+func (r *reminderStats) toMap() map[string]interface{} {
+	result := map[string]interface{}{
+		"total_unpaid_bills": r.total,
+		"messages_sent":      r.sent,
+		"messages_skipped":   r.skipped,
+		"messages_failed":    r.failed,
+	}
+
+	if len(r.errors) > 0 {
+		result["errors"] = r.errors
+	}
+
+	return result
 }

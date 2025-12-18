@@ -68,8 +68,15 @@ func main() {
 	customerSvc := services.NewCustomerService(customerRepo, userSvc, subscriptionSvc)
 	customerCtrl := controllers.NewCustomerController(customerSvc)
 
+	// Init WhatsApp service
+	whatsappBaseURL := os.Getenv("WHATSAPP_BOT_URL")
+	if whatsappBaseURL == "" {
+		whatsappBaseURL = "http://localhost:3030"
+	}
+	waSvc := services.NewWhatsAppService(whatsappBaseURL)
+
 	billRepo := repositories.NewBillRepository(gormDB)
-	billSvc := services.NewBillService(billRepo, subscriptionRepo)
+	billSvc := services.NewBillService(billRepo, subscriptionRepo, waSvc)
 	billCtrl := controllers.NewBillController(billSvc)
 
 	complainRepo := repositories.NewComplainRepository(gormDB)

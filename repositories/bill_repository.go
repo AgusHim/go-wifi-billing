@@ -14,6 +14,7 @@ type BillRepository interface {
 	Update(bill *models.Bill) error
 	Delete(id string) error
 	FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error)
+	FindUnpaidBills() ([]models.Bill, error)
 }
 
 type billRepository struct {
@@ -98,4 +99,16 @@ func (r *billRepository) FindBillByCustomerAndMonth(customerID string, month int
 		return nil, err
 	}
 	return &bill, nil
+}
+
+func (r *billRepository) FindUnpaidBills() ([]models.Bill, error) {
+	var bills []models.Bill
+	err := r.db.
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package").
+		Where("status = ?", "unpaid").
+		Find(&bills).Error
+	return bills, err
 }
