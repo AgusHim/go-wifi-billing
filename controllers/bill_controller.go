@@ -1,9 +1,11 @@
 package controllers
 
 import (
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type BillController struct {
@@ -16,6 +18,7 @@ func (c *BillController) RegisterRoutes(router fiber.Router) {
 
 	user_api := router.Group("/user_api/bills")
 	user_api.Get("/", c.GetAll)
+	user_api.Get("/me", middlewares.UserProtected(), c.GetByUserID)
 	user_api.Get("/public/:public_id", c.GetByPublicID)
 	admin_api := router.Group("/admin_api/bills")
 	admin_api.Get("/generate", c.GenerateMonthlyBills)
@@ -71,15 +74,17 @@ func (c *BillController) GetByPublicID(ctx *fiber.Ctx) error {
 	})
 }
 func (c *BillController) GetByUserID(ctx *fiber.Ctx) error {
-	userID := ctx.Locals("user_id")
-	if userID == nil {
+	userClaims := ctx.Locals("user").(jwt.MapClaims)
+	userID := userClaims["user_id"].(string)
+
+	if userID == "" {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"success": false,
 			"message": "Unauthorized",
 		})
 	}
 
-	data, err := c.service.GetByUserID(userID.(string))
+	data, err := c.service.GetByUserID(userID)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,

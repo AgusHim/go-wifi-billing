@@ -4,9 +4,11 @@ import (
 	"strconv"
 
 	"github.com/Agushim/go_wifi_billing/dto"
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type UserController struct {
@@ -22,6 +24,7 @@ func (ctrl *UserController) RegisterRoutes(router fiber.Router) {
 
 	api.Post("/auth/register", ctrl.Register)
 	api.Post("/auth/login", ctrl.Login)
+	api.Get("/auth/me", middlewares.UserProtected(), ctrl.GetMe)
 
 	users := api.Group("/users")
 	users.Get("/", ctrl.GetAll)
@@ -56,6 +59,18 @@ func (ctrl *UserController) Login(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"success": true, "data": fiber.Map{"token": token, "user": user}, "message": "Login success"})
+}
+
+func (ctrl *UserController) GetMe(c *fiber.Ctx) error {
+	userClaims := c.Locals("user").(jwt.MapClaims)
+	userID := userClaims["user_id"].(string)
+
+	user, err := ctrl.service.GetByID(userID)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "User not found"})
+	}
+
+	return c.JSON(fiber.Map{"success": true, "data": user, "message": "Success get data"})
 }
 
 func (ctrl *UserController) GetAll(c *fiber.Ctx) error {
