@@ -25,6 +25,7 @@ func (ctrl *UserController) RegisterRoutes(router fiber.Router) {
 	api.Post("/auth/register", ctrl.Register)
 	api.Post("/auth/login", ctrl.Login)
 	api.Get("/auth/me", middlewares.UserProtected(), ctrl.GetMe)
+	api.Put("/auth/me", middlewares.UserProtected(), ctrl.UpdateMe)
 
 	users := api.Group("/users")
 	users.Get("/", ctrl.GetAll)
@@ -71,6 +72,23 @@ func (ctrl *UserController) GetMe(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"success": true, "data": user, "message": "Success get data"})
+}
+
+func (ctrl *UserController) UpdateMe(c *fiber.Ctx) error {
+	userClaims := c.Locals("user").(jwt.MapClaims)
+	userID := userClaims["user_id"].(string)
+
+	var input models.User
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "invalid input"})
+	}
+
+	user, err := ctrl.service.Update(userID, &input)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"success": true, "data": user, "message": "Profile updated"})
 }
 
 func (ctrl *UserController) GetAll(c *fiber.Ctx) error {

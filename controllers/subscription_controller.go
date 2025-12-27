@@ -3,21 +3,28 @@ package controllers
 import (
 	"strconv"
 
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
 type SubscriptionController struct {
-	service services.SubscriptionService
+	service         services.SubscriptionService
+	customerService services.CustomerService
 }
 
-func NewSubscriptionController(service services.SubscriptionService) *SubscriptionController {
-	return &SubscriptionController{service}
+func NewSubscriptionController(service services.SubscriptionService, customerService services.CustomerService) *SubscriptionController {
+	return &SubscriptionController{service, customerService}
 }
 
 func (c *SubscriptionController) RegisterRoutes(router fiber.Router) {
+	// User API
+	userGroup := router.Group("/user_api/subscriptions")
+	userGroup.Get("/me", middlewares.UserProtected(), c.GetMySubscription)
+
 	r := router.Group("/admin_api/subscriptions")
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
@@ -93,6 +100,31 @@ func (c *SubscriptionController) GetByCustomerID(ctx *fiber.Ctx) error {
 		"success": true,
 		"data":    subscriptions,
 		"message": "Success get subscriptions by customer",
+	})
+}
+
+func (c *SubscriptionController) GetMySubscription(ctx *fiber.Ctx) error {
+	userClaims := ctx.Locals("user").(jwt.MapClaims)
+	userIDStr := userClaims["user_id"].(string)
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid User ID"})
+	}
+
+	customer, err := c.customerService.FindByUserID(userID)
+	if err != nil {
+		return ctx.Status(404).JSON(fiber.Map{"success": false, "message": "Customer profile not found"})
+	}
+
+	subscriptions, err := c.service.FindByCustomerID(customer.ID.String())
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"data":    subscriptions,
+		"message": "Success get my subscriptions",
 	})
 }
 

@@ -62,11 +62,12 @@ func main() {
 
 	subscriptionRepo := repositories.NewSubscriptionRepository(gormDB)
 	subscriptionSvc := services.NewSubscriptionService(subscriptionRepo)
-	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc)
 
 	customerRepo := repositories.NewCustomerRepository(gormDB)
 	customerSvc := services.NewCustomerService(customerRepo, userSvc, subscriptionSvc)
 	customerCtrl := controllers.NewCustomerController(customerSvc)
+
+	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc, customerSvc)
 
 	// Init WhatsApp service
 	whatsappBaseURL := os.Getenv("WHATSAPP_BOT_URL")
