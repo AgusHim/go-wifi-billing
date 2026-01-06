@@ -14,7 +14,7 @@ import (
 )
 
 type BillService interface {
-	GetAll() ([]models.Bill, error)
+	GetAll(page, limit int, search string) ([]models.Bill, int64, error)
 	GetByID(id string) (models.Bill, error)
 	Create(input models.Bill) (models.Bill, error)
 	Update(id string, input models.Bill) (models.Bill, error)
@@ -36,8 +36,8 @@ func NewBillService(repo repositories.BillRepository, subRepo repositories.Subsc
 	return &billService{repo, subRepo, waSvc}
 }
 
-func (s *billService) GetAll() ([]models.Bill, error) {
-	return s.repo.FindAll()
+func (s *billService) GetAll(page, limit int, search string) ([]models.Bill, int64, error) {
+	return s.repo.FindAllPaginated(page, limit, search)
 }
 
 func (s *billService) GetByID(id string) (models.Bill, error) {

@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"strconv"
+
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
@@ -35,11 +37,29 @@ func NewBillController(service services.BillService) *BillController {
 }
 
 func (c *BillController) GetAll(ctx *fiber.Ctx) error {
-	data, err := c.service.GetAll()
+	pageStr := ctx.Query("page", "1")
+	limitStr := ctx.Query("limit", "10")
+	search := ctx.Query("search", "")
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
+
+	data, total, err := c.service.GetAll(page, limit, search)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
-	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Success get all bills"})
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"meta": fiber.Map{
+			"pagination": fiber.Map{
+				"page":        page,
+				"limit":       limit,
+				"total":       total,
+				"total_pages": int((total + int64(limit) - 1) / int64(limit)),
+			},
+		},
+		"data":    data,
+		"message": "Success get all bills",
+	})
 }
 
 func (c *BillController) GetByID(ctx *fiber.Ctx) error {

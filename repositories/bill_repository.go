@@ -7,6 +7,7 @@ import (
 
 type BillRepository interface {
 	FindAll() ([]models.Bill, error)
+	FindAllPaginated(page, limit int, search string) ([]models.Bill, int64, error)
 	FindByID(id string) (models.Bill, error)
 	FindByPublicID(publicID string) (*models.Bill, error)
 	FindByUserID(userID string) ([]models.Bill, error)
@@ -34,6 +35,35 @@ func (r *billRepository) FindAll() ([]models.Bill, error) {
 		Preload("Subscription.Package").
 		Find(&bills).Error
 	return bills, err
+}
+
+func (r *billRepository) FindAllPaginated(page, limit int, search string) ([]models.Bill, int64, error) {
+	var bills []models.Bill
+	var total int64
+
+	query := r.db.Model(&models.Bill{}).
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package")
+
+	// Apply search filter if provided
+	if search != "" {
+		query = query.Joins("JOIN customers ON customers.id = bills.customer_id").
+			Joins("JOIN users ON users.id = customers.user_id").
+			Where("LOWER(users.name) LIKE LOWER(?)", "%"+search+"%")
+	}
+
+	// Count total records
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Apply pagination
+	offset := (page - 1) * limit
+	err := query.Offset(offset).Limit(limit).Find(&bills).Error
+
+	return bills, total, err
 }
 
 func (r *billRepository) FindByID(id string) (models.Bill, error) {
