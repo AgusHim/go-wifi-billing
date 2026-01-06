@@ -16,6 +16,8 @@ type BillRepository interface {
 	Delete(id string) error
 	FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error)
 	FindUnpaidBills() ([]models.Bill, error)
+	GetDashboardStats() (map[string]int64, error)
+	GetRecentPaidBills(limit int) ([]models.Bill, error)
 }
 
 type billRepository struct {
@@ -139,6 +141,54 @@ func (r *billRepository) FindUnpaidBills() ([]models.Bill, error) {
 		Preload("Subscription").
 		Preload("Subscription.Package").
 		Where("status = ?", "unpaid").
+		Find(&bills).Error
+	return bills, err
+}
+
+func (r *billRepository) GetDashboardStats() (map[string]int64, error) {
+	stats := make(map[string]int64)
+
+	// Count paid bills
+	var paidCount int64
+	if err := r.db.Model(&models.Bill{}).Where("status = ?", "paid").Count(&paidCount).Error; err != nil {
+		return nil, err
+	}
+	stats["paid_bills"] = paidCount
+
+	// Count unpaid bills
+	var unpaidCount int64
+	if err := r.db.Model(&models.Bill{}).Where("status = ?", "unpaid").Count(&unpaidCount).Error; err != nil {
+		return nil, err
+	}
+	stats["unpaid_bills"] = unpaidCount
+
+	// Count total customers
+	var customerCount int64
+	if err := r.db.Table("customers").Where("deleted_at IS NULL").Count(&customerCount).Error; err != nil {
+		return nil, err
+	}
+	stats["total_customers"] = customerCount
+
+	// Count total admins
+	var adminCount int64
+	if err := r.db.Table("users").Where("role = ?", "admin").Count(&adminCount).Error; err != nil {
+		return nil, err
+	}
+	stats["total_admins"] = adminCount
+
+	return stats, nil
+}
+
+func (r *billRepository) GetRecentPaidBills(limit int) ([]models.Bill, error) {
+	var bills []models.Bill
+	err := r.db.
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package").
+		Where("status = ?", "paid").
+		Order("updated_at DESC").
+		Limit(limit).
 		Find(&bills).Error
 	return bills, err
 }

@@ -24,6 +24,8 @@ type BillService interface {
 	GetByUserID(userID string) ([]models.Bill, error)
 	GetUnpaidBills() ([]models.Bill, error)
 	SendReminders() (map[string]interface{}, error)
+	GetDashboardStats() (map[string]interface{}, error)
+	GetRecentPaidBills(limit int) ([]models.Bill, error)
 }
 
 type billService struct {
@@ -149,12 +151,12 @@ func (s *billService) GenerateMonthlyBills() error {
 		}
 	}
 
-	go func() {
-		log.Println("[WA] Sending reminders in background...")
-		if _, err := s.SendReminders(); err != nil {
-			log.Printf("[WA] Failed sending reminders: %v", err)
-		}
-	}()
+	// go func() {
+	// 	log.Println("[WA] Sending reminders in background...")
+	// 	if _, err := s.SendReminders(); err != nil {
+	// 		log.Printf("[WA] Failed sending reminders: %v", err)
+	// 	}
+	// }()
 
 	return nil
 }
@@ -257,4 +259,23 @@ func (r *reminderStats) toMap() map[string]interface{} {
 	}
 
 	return result
+}
+
+func (s *billService) GetDashboardStats() (map[string]interface{}, error) {
+	stats, err := s.repo.GetDashboardStats()
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert int64 values to interface{} map
+	result := make(map[string]interface{})
+	for key, value := range stats {
+		result[key] = value
+	}
+
+	return result, nil
+}
+
+func (s *billService) GetRecentPaidBills(limit int) ([]models.Bill, error) {
+	return s.repo.GetRecentPaidBills(limit)
 }

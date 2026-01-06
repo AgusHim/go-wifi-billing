@@ -23,6 +23,8 @@ func (c *BillController) RegisterRoutes(router fiber.Router) {
 	user_api.Get("/me", middlewares.UserProtected(), c.GetByUserID)
 	user_api.Get("/public/:public_id", c.GetByPublicID)
 	admin_api := router.Group("/admin_api/bills")
+	admin_api.Get("/dashboard/stats", c.GetDashboardStats)
+	admin_api.Get("/recent/paid", c.GetRecentPaidBills)
 	admin_api.Get("/generate", c.GenerateMonthlyBills)
 	admin_api.Get("/send-reminders", c.SendReminders)
 	admin_api.Post("/create", c.Create)
@@ -165,4 +167,23 @@ func (c *BillController) SendReminders(ctx *fiber.Ctx) error {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": result, "message": "Reminders sent successfully"})
+}
+
+func (c *BillController) GetDashboardStats(ctx *fiber.Ctx) error {
+	stats, err := c.service.GetDashboardStats()
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": stats, "message": "Dashboard stats retrieved successfully"})
+}
+
+func (c *BillController) GetRecentPaidBills(ctx *fiber.Ctx) error {
+	limitStr := ctx.Query("limit", "10")
+	limit, _ := strconv.Atoi(limitStr)
+
+	bills, err := c.service.GetRecentPaidBills(limit)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": bills, "message": "Recent paid bills retrieved successfully"})
 }
