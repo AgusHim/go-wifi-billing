@@ -17,7 +17,6 @@ services:
       - MIDTRANS_ENV=${MIDTRANS_ENV}
       - MIDTRANS_SERVER_KEY=${MIDTRANS_SERVER_KEY}
       - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY}
-      - MIDTRANS_API_KEY=${MIDTRANS_API_KEY}
     command: ./main # or `air` if using hot reload
     working_dir: /app
 
