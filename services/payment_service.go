@@ -21,6 +21,7 @@ type PaymentService interface {
 	CreateMidtransTransaction(paymentID string) (*models.Payment, error)
 	HandleMindtransCallback(paymentID string, status string) error
 	GetByUserID(userID string) ([]models.Payment, error)
+	BatchCreate(inputs []models.Payment) ([]models.Payment, error)
 }
 
 type paymentService struct {
@@ -80,6 +81,18 @@ func (s *paymentService) Create(input models.Payment) (*models.Payment, error) {
 		input.Bill.Subscription = *nsubs
 	}
 	return &input, err
+}
+
+func (s *paymentService) BatchCreate(inputs []models.Payment) ([]models.Payment, error) {
+	var results []models.Payment
+	for _, input := range inputs {
+		res, err := s.Create(input)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, *res)
+	}
+	return results, nil
 }
 
 func (s *paymentService) Update(id string, input models.Payment) (*models.Payment, error) {

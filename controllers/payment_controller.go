@@ -25,6 +25,7 @@ func (c *PaymentController) RegisterRoutes(router fiber.Router) {
 
 	admin_api := router.Group("/admin_api/payments")
 	admin_api.Post("/", c.Create)
+	admin_api.Post("/batch", c.BatchCreate)
 	admin_api.Get("/", c.GetAll)
 	admin_api.Get("/:id", c.GetByID)
 	admin_api.Put("/:id", c.Update)
@@ -71,6 +72,18 @@ func (c *PaymentController) Create(ctx *fiber.Ctx) error {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Payment created successfully"})
+}
+
+func (c *PaymentController) BatchCreate(ctx *fiber.Ctx) error {
+	var input []models.Payment
+	if err := ctx.BodyParser(&input); err != nil {
+		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	data, err := c.service.BatchCreate(input)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Batch payment created successfully"})
 }
 
 func (c *PaymentController) Update(ctx *fiber.Ctx) error {
