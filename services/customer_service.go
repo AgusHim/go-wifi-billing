@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Agushim/go_wifi_billing/dto"
 	"github.com/Agushim/go_wifi_billing/models"
@@ -61,17 +62,36 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 		}
 	}
 
-	adminID := uuid.MustParse(*body.AdminID)
+	coverageID, err := parseRequiredUUID(body.CoverageID, "coverage_id")
+	if err != nil {
+		return nil, err
+	}
+	adminID, err := parseRequiredUUID(body.AdminID, "admin_id")
+	if err != nil {
+		return nil, err
+	}
+	odcID, err := parseOptionalUUID(body.OdcID, "odc_id")
+	if err != nil {
+		return nil, err
+	}
+	odpID, err := parseOptionalUUID(body.OdpID, "odp_id")
+	if err != nil {
+		return nil, err
+	}
+	portOdp := ""
+	if body.PortOdp != nil {
+		portOdp = *body.PortOdp
+	}
 
 	// Buat customer baru
 	customer := &models.Customer{
 		ID:            uuid.New(),
 		UserID:        user.ID,
 		User:          user,
-		CoverageID:    uuid.MustParse(*body.CoverageID),
-		OdcID:         uuid.MustParse(*body.OdcID),
-		OdpID:         uuid.MustParse(*body.OdpID),
-		PortOdp:       *body.PortOdp,
+		CoverageID:    coverageID,
+		OdcID:         odcID,
+		OdpID:         odpID,
+		PortOdp:       portOdp,
 		ServiceNumber: *body.ServiceNumber,
 		Card:          *body.Card,
 		IDCard:        *body.IDCard,
@@ -109,17 +129,34 @@ func (s *customerService) FindByUserID(userID uuid.UUID) (*models.Customer, erro
 	return s.repo.FindByUserID(userID)
 }
 
-
 func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*models.Customer, error) {
 	existing, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	existing.CoverageID = uuid.MustParse(*input.CoverageID)
-	existing.OdcID = uuid.MustParse(*input.OdcID)
-	existing.OdpID = uuid.MustParse(*input.OdpID)
-	existing.PortOdp = *input.PortOdp
+	coverageID, err := parseRequiredUUID(input.CoverageID, "coverage_id")
+	if err != nil {
+		return nil, err
+	}
+	existing.CoverageID = coverageID
+	if input.OdcID != nil {
+		odcID, err := parseOptionalUUID(input.OdcID, "odc_id")
+		if err != nil {
+			return nil, err
+		}
+		existing.OdcID = odcID
+	}
+	if input.OdpID != nil {
+		odpID, err := parseOptionalUUID(input.OdpID, "odp_id")
+		if err != nil {
+			return nil, err
+		}
+		existing.OdpID = odpID
+	}
+	if input.PortOdp != nil {
+		existing.PortOdp = *input.PortOdp
+	}
 	existing.ServiceNumber = *input.ServiceNumber
 	existing.Card = *input.Card
 	existing.IDCard = *input.IDCard
@@ -132,7 +169,10 @@ func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*m
 	existing.Mode = *input.Mode
 	existing.IDPPOE = *input.IDPPOE
 	existing.ProfilePPOE = *input.ProfilePPOE
-	adminID := uuid.MustParse(*input.AdminID)
+	adminID, err := parseRequiredUUID(input.AdminID, "admin_id")
+	if err != nil {
+		return nil, err
+	}
 	existing.AdminID = &adminID
 
 	user, err := s.userService.GetByID(existing.UserID.String())
@@ -155,4 +195,26 @@ func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*m
 
 func (s *customerService) Delete(id uuid.UUID) error {
 	return s.repo.Delete(id)
+}
+
+func parseRequiredUUID(value *string, field string) (uuid.UUID, error) {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return uuid.Nil, fmt.Errorf("%s is required", field)
+	}
+	parsed, err := uuid.Parse(*value)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid %s", field)
+	}
+	return parsed, nil
+}
+
+func parseOptionalUUID(value *string, field string) (*uuid.UUID, error) {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil, nil
+	}
+	parsed, err := uuid.Parse(*value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid %s", field)
+	}
+	return &parsed, nil
 }

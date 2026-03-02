@@ -105,7 +105,6 @@ func (c *CustomerController) GetByUserID(ctx *fiber.Ctx) error {
 	})
 }
 
-
 func (c *CustomerController) Update(ctx *fiber.Ctx) error {
 	id, err := uuid.Parse(ctx.Params("id"))
 	if err != nil {

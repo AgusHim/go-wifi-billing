@@ -11,8 +11,8 @@ type Customer struct {
 	ID            uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
 	UserID        uuid.UUID      `json:"user_id" gorm:"type:uuid"`
 	CoverageID    uuid.UUID      `json:"coverage_id" gorm:"type:uuid"`
-	OdcID         uuid.UUID      `json:"odc_id" gorm:"type:uuid"`
-	OdpID         uuid.UUID      `json:"odp_id" gorm:"type:uuid"`
+	OdcID         *uuid.UUID     `json:"odc_id" gorm:"type:uuid"`
+	OdpID         *uuid.UUID     `json:"odp_id" gorm:"type:uuid"`
 	PortOdp       string         `json:"port_odp"`
 	ServiceNumber string         `json:"service_number"`
 	Card          string         `json:"card"`
