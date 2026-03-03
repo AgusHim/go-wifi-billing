@@ -14,7 +14,7 @@ import (
 
 type CustomerService interface {
 	Create(customer *dto.CreateCustomerDTO) (*models.Customer, error)
-	GetAll(page, limit int, search string) ([]models.Customer, int64, error)
+	GetAll(page, limit int, search string, adminID string) ([]models.Customer, int64, error)
 	GetByID(id uuid.UUID) (*models.Customer, error)
 	FindByUserID(userID uuid.UUID) (*models.Customer, error)
 	Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*models.Customer, error)
@@ -117,8 +117,19 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 	return customer, nil
 }
 
-func (s *customerService) GetAll(page, limit int, search string) ([]models.Customer, int64, error) {
-	return s.repo.FindAll(page, limit, search)
+func (s *customerService) GetAll(page, limit int, search string, adminID string) ([]models.Customer, int64, error) {
+	adminID = strings.TrimSpace(adminID)
+
+	var parsedAdminID *uuid.UUID
+	if adminID != "" {
+		uid, err := uuid.Parse(adminID)
+		if err != nil {
+			return nil, 0, errors.New("invalid admin_id")
+		}
+		parsedAdminID = &uid
+	}
+
+	return s.repo.FindAll(page, limit, search, parsedAdminID)
 }
 
 func (s *customerService) GetByID(id uuid.UUID) (*models.Customer, error) {

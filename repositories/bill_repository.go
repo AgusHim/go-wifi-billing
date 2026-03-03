@@ -1,13 +1,16 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/Agushim/go_wifi_billing/models"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type BillRepository interface {
 	FindAll() ([]models.Bill, error)
-	FindAllPaginated(page, limit int, search string) ([]models.Bill, int64, error)
+	FindAllPaginated(page, limit int, search string, adminID *uuid.UUID, status string, startDate *time.Time, endDate *time.Time) ([]models.Bill, int64, error)
 	FindByID(id string) (models.Bill, error)
 	FindByPublicID(publicID string) (*models.Bill, error)
 	FindByUserID(userID string) ([]models.Bill, error)
@@ -18,6 +21,7 @@ type BillRepository interface {
 	FindUnpaidBills() ([]models.Bill, error)
 	GetDashboardStats() (map[string]int64, error)
 	GetRecentPaidBills(limit int) ([]models.Bill, error)
+	GetDashboardChartRows(fromDate time.Time, adminID *uuid.UUID) ([]models.Bill, error)
 }
 
 type billRepository struct {
@@ -39,7 +43,14 @@ func (r *billRepository) FindAll() ([]models.Bill, error) {
 	return bills, err
 }
 
-func (r *billRepository) FindAllPaginated(page, limit int, search string) ([]models.Bill, int64, error) {
+func (r *billRepository) FindAllPaginated(
+	page, limit int,
+	search string,
+	adminID *uuid.UUID,
+	status string,
+	startDate *time.Time,
+	endDate *time.Time,
+) ([]models.Bill, int64, error) {
 	var bills []models.Bill
 	var total int64
 
@@ -54,6 +65,18 @@ func (r *billRepository) FindAllPaginated(page, limit int, search string) ([]mod
 		query = query.Joins("JOIN customers ON customers.id = bills.customer_id").
 			Joins("JOIN users ON users.id = customers.user_id").
 			Where("LOWER(users.name) LIKE LOWER(?)", "%"+search+"%")
+	}
+	if adminID != nil {
+		query = query.Where("bills.admin_id = ?", *adminID)
+	}
+	if status != "" {
+		query = query.Where("LOWER(bills.status) = LOWER(?)", status)
+	}
+	if startDate != nil {
+		query = query.Where("bills.bill_date >= ?", *startDate)
+	}
+	if endDate != nil {
+		query = query.Where("bills.bill_date < ?", *endDate)
 	}
 
 	// Count total records
@@ -191,4 +214,25 @@ func (r *billRepository) GetRecentPaidBills(limit int) ([]models.Bill, error) {
 		Limit(limit).
 		Find(&bills).Error
 	return bills, err
+}
+
+func (r *billRepository) GetDashboardChartRows(fromDate time.Time, adminID *uuid.UUID) ([]models.Bill, error) {
+	var bills []models.Bill
+
+	query := r.db.Model(&models.Bill{}).
+		Select("bill_date", "status", "amount")
+
+	if adminID != nil {
+		query = query.Where("admin_id = ?", *adminID)
+	}
+
+	err := query.
+		Where("bill_date >= ?", fromDate).
+		Order("bill_date ASC").
+		Find(&bills).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return bills, nil
 }

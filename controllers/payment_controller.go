@@ -1,11 +1,17 @@
 package controllers
 
 import (
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/Agushim/go_wifi_billing/dto"
 	"github.com/Agushim/go_wifi_billing/lib"
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type PaymentController struct {
@@ -26,18 +32,72 @@ func (c *PaymentController) RegisterRoutes(router fiber.Router) {
 	admin_api := router.Group("/admin_api/payments")
 	admin_api.Post("/", c.Create)
 	admin_api.Post("/batch", c.BatchCreate)
-	admin_api.Get("/", c.GetAll)
+	admin_api.Get("/", middlewares.UserProtected(), c.GetAll)
+	admin_api.Get("/export/csv", middlewares.UserProtected(), c.ExportCSV)
 	admin_api.Get("/:id", c.GetByID)
 	admin_api.Put("/:id", c.Update)
 	admin_api.Delete("/:id", c.Delete)
 }
 
 func (c *PaymentController) GetAll(ctx *fiber.Ctx) error {
-	data, err := c.service.GetAll()
+	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
+	search := strings.TrimSpace(ctx.Query("search", ""))
+	status := strings.TrimSpace(ctx.Query("status", ""))
+	startAt := strings.TrimSpace(ctx.Query("start_at", ""))
+	endAt := strings.TrimSpace(ctx.Query("end_at", ""))
+
+	// Loket can only see their own payments regardless of query.
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		userID, _ := userClaims["user_id"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "loket" && strings.TrimSpace(userID) != "" {
+			adminID = userID
+		}
+	}
+
+	data, err := c.service.GetAll(adminID, search, status, startAt, endAt)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "invalid admin_id") ||
+			strings.Contains(strings.ToLower(err.Error()), "invalid start_at format") ||
+			strings.Contains(strings.ToLower(err.Error()), "invalid end_at format") ||
+			strings.Contains(strings.ToLower(err.Error()), "start_at must be before or equal end_at") {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Success get all payments"})
+}
+
+func (c *PaymentController) ExportCSV(ctx *fiber.Ctx) error {
+	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
+	search := strings.TrimSpace(ctx.Query("search", ""))
+	status := strings.TrimSpace(ctx.Query("status", ""))
+	startAt := strings.TrimSpace(ctx.Query("start_at", ""))
+	endAt := strings.TrimSpace(ctx.Query("end_at", ""))
+
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		userID, _ := userClaims["user_id"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "loket" && strings.TrimSpace(userID) != "" {
+			adminID = userID
+		}
+	}
+
+	content, err := c.service.ExportCSV(adminID, search, status, startAt, endAt)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "invalid admin_id") ||
+			strings.Contains(strings.ToLower(err.Error()), "invalid start_at format") ||
+			strings.Contains(strings.ToLower(err.Error()), "invalid end_at format") ||
+			strings.Contains(strings.ToLower(err.Error()), "start_at must be before or equal end_at") {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+
+	filename := fmt.Sprintf("payments-%s.csv", time.Now().Format("20060102-150405"))
+	ctx.Set("Content-Type", "text/csv; charset=utf-8")
+	ctx.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	return ctx.Send(content)
 }
 
 func (c *PaymentController) GetByID(ctx *fiber.Ctx) error {

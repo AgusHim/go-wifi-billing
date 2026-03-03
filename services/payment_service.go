@@ -1,8 +1,13 @@
 package services
 
 import (
+	"bytes"
+	"encoding/csv"
+	"errors"
+	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
@@ -13,7 +18,7 @@ import (
 )
 
 type PaymentService interface {
-	GetAll() ([]models.Payment, error)
+	GetAll(adminID string, search string, status string, startAt string, endAt string) ([]models.Payment, error)
 	GetByID(id string) (models.Payment, error)
 	Create(input models.Payment) (*models.Payment, error)
 	Update(id string, input models.Payment) (*models.Payment, error)
@@ -22,6 +27,7 @@ type PaymentService interface {
 	HandleMindtransCallback(paymentID string, status string) error
 	GetByUserID(userID string) ([]models.Payment, error)
 	BatchCreate(inputs []models.Payment) ([]models.Payment, error)
+	ExportCSV(adminID string, search string, status string, startAt string, endAt string) ([]byte, error)
 }
 
 type paymentService struct {
@@ -50,8 +56,28 @@ func NewPaymentService(
 	}
 }
 
-func (s *paymentService) GetAll() ([]models.Payment, error) {
-	return s.repo.FindAll()
+func (s *paymentService) GetAll(adminID string, search string, status string, startAt string, endAt string) ([]models.Payment, error) {
+	adminID = strings.TrimSpace(adminID)
+	search = strings.TrimSpace(search)
+	status = strings.TrimSpace(status)
+	startAt = strings.TrimSpace(startAt)
+	endAt = strings.TrimSpace(endAt)
+
+	var parsedAdminID *uuid.UUID
+	if adminID != "" {
+		uid, err := uuid.Parse(adminID)
+		if err != nil {
+			return nil, errors.New("invalid admin_id")
+		}
+		parsedAdminID = &uid
+	}
+
+	startDate, endDate, err := parseStartEndRange(startAt, endAt)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.repo.FindAll(parsedAdminID, search, status, startDate, endDate)
 }
 
 func (s *paymentService) GetByID(id string) (models.Payment, error) {
@@ -283,4 +309,105 @@ func getStatus(status string) string {
 	} else {
 		return status
 	}
+}
+
+func (s *paymentService) ExportCSV(adminID string, search string, status string, startAt string, endAt string) ([]byte, error) {
+	payments, err := s.GetAll(adminID, search, status, startAt, endAt)
+	if err != nil {
+		return nil, err
+	}
+
+	buffer := &bytes.Buffer{}
+	writer := csv.NewWriter(buffer)
+
+	headers := []string{
+		"invoice_number",
+		"customer_name",
+		"customer_email",
+		"method",
+		"payment_date",
+		"amount",
+		"status",
+		"admin_name",
+		"created_at",
+		"updated_at",
+	}
+	if err := writer.Write(headers); err != nil {
+		return nil, err
+	}
+
+	for _, payment := range payments {
+		invoice := ""
+		customerName := ""
+		customerEmail := ""
+		adminName := ""
+
+		if payment.Bill.PublicID != "" {
+			invoice = strings.ToUpper(payment.Bill.PublicID)
+		}
+		if payment.Bill.Customer.User != nil {
+			customerName = payment.Bill.Customer.User.Name
+			customerEmail = payment.Bill.Customer.User.Email
+		}
+		if payment.Admin.Name != "" {
+			adminName = payment.Admin.Name
+		}
+
+		record := []string{
+			invoice,
+			customerName,
+			customerEmail,
+			payment.Method,
+			payment.PaymentDate.Format(time.RFC3339),
+			fmt.Sprintf("%d", payment.Amount),
+			payment.Status,
+			adminName,
+			payment.CreatedAt.Format(time.RFC3339),
+			payment.UpdatedAt.Format(time.RFC3339),
+		}
+
+		if err := writer.Write(record); err != nil {
+			return nil, err
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return nil, err
+	}
+
+	return buffer.Bytes(), nil
+}
+
+func parseStartEndRange(startAt string, endAt string) (*time.Time, *time.Time, error) {
+	var startDate *time.Time
+	var endDate *time.Time
+	var rawStart *time.Time
+	var rawEnd *time.Time
+
+	if startAt != "" {
+		parsedStart, err := time.Parse("2006-01-02", startAt)
+		if err != nil {
+			return nil, nil, errors.New("invalid start_at format, expected YYYY-MM-DD")
+		}
+		rawStart = &parsedStart
+		start := time.Date(parsedStart.Year(), parsedStart.Month(), parsedStart.Day(), 0, 0, 0, 0, time.UTC)
+		startDate = &start
+	}
+
+	if endAt != "" {
+		parsedEnd, err := time.Parse("2006-01-02", endAt)
+		if err != nil {
+			return nil, nil, errors.New("invalid end_at format, expected YYYY-MM-DD")
+		}
+		rawEnd = &parsedEnd
+		end := time.Date(parsedEnd.Year(), parsedEnd.Month(), parsedEnd.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+		endDate = &end
+	}
+
+	if rawStart != nil && rawEnd != nil && rawStart.After(*rawEnd) {
+		return nil, nil, errors.New("start_at must be before or equal end_at")
+	}
+
+	return startDate, endDate, nil
 }

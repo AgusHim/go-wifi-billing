@@ -1,12 +1,15 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/Agushim/go_wifi_billing/models"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type PaymentRepository interface {
-	FindAll() ([]models.Payment, error)
+	FindAll(adminID *uuid.UUID, search string, status string, startDate *time.Time, endDate *time.Time) ([]models.Payment, error)
 	FindByID(id string) (models.Payment, error)
 	Create(payment *models.Payment) error
 	Update(payment *models.Payment) error
@@ -22,15 +25,37 @@ func NewPaymentRepository(db *gorm.DB) PaymentRepository {
 	return &paymentRepository{db}
 }
 
-func (r *paymentRepository) FindAll() ([]models.Payment, error) {
+func (r *paymentRepository) FindAll(adminID *uuid.UUID, search string, status string, startDate *time.Time, endDate *time.Time) ([]models.Payment, error) {
 	var payments []models.Payment
-	err := r.db.
+	query := r.db.
 		Preload("Bill").
 		Preload("Bill.Customer.User").
 		Preload("Bill.Subscription").
 		Preload("Bill.Subscription.Package").
-		Preload("Admin").
-		Find(&payments).Error
+		Preload("Admin")
+
+	if search != "" {
+		query = query.
+			Joins("JOIN bills ON payments.bill_id = bills.id").
+			Joins("JOIN customers ON bills.customer_id = customers.id").
+			Joins("JOIN users ON customers.user_id = users.id").
+			Where("LOWER(users.name) LIKE LOWER(?)", "%"+search+"%")
+	}
+
+	if adminID != nil {
+		query = query.Where("payments.admin_id = ?", *adminID)
+	}
+	if status != "" {
+		query = query.Where("LOWER(payments.status) = LOWER(?)", status)
+	}
+	if startDate != nil {
+		query = query.Where("payments.payment_date >= ?", *startDate)
+	}
+	if endDate != nil {
+		query = query.Where("payments.payment_date < ?", *endDate)
+	}
+
+	err := query.Order("payments.payment_date DESC").Find(&payments).Error
 	return payments, err
 }
 

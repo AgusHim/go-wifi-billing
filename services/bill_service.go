@@ -1,9 +1,11 @@
 package services
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
@@ -14,7 +16,7 @@ import (
 )
 
 type BillService interface {
-	GetAll(page, limit int, search string) ([]models.Bill, int64, error)
+	GetAll(page, limit int, search string, adminID string, status string, startAt string, endAt string) ([]models.Bill, int64, error)
 	GetByID(id string) (models.Bill, error)
 	Create(input models.Bill) (models.Bill, error)
 	Update(id string, input models.Bill) (models.Bill, error)
@@ -25,6 +27,7 @@ type BillService interface {
 	GetUnpaidBills() ([]models.Bill, error)
 	SendReminders() (map[string]interface{}, error)
 	GetDashboardStats() (map[string]interface{}, error)
+	GetDashboardCharts(months int, adminID string) (map[string]interface{}, error)
 	GetRecentPaidBills(limit int) ([]models.Bill, error)
 }
 
@@ -38,8 +41,35 @@ func NewBillService(repo repositories.BillRepository, subRepo repositories.Subsc
 	return &billService{repo, subRepo, waSvc}
 }
 
-func (s *billService) GetAll(page, limit int, search string) ([]models.Bill, int64, error) {
-	return s.repo.FindAllPaginated(page, limit, search)
+func (s *billService) GetAll(page, limit int, search string, adminID string, status string, startAt string, endAt string) ([]models.Bill, int64, error) {
+	adminID = strings.TrimSpace(adminID)
+	status = strings.TrimSpace(strings.ToLower(status))
+	startAt = strings.TrimSpace(startAt)
+	endAt = strings.TrimSpace(endAt)
+
+	var parsedAdminID *uuid.UUID
+	if adminID != "" {
+		uid, err := uuid.Parse(adminID)
+		if err != nil {
+			return nil, 0, errors.New("invalid admin_id")
+		}
+		parsedAdminID = &uid
+	}
+
+	if status != "" {
+		switch status {
+		case "paid", "unpaid", "overdue":
+		default:
+			return nil, 0, errors.New("invalid status")
+		}
+	}
+
+	startDate, endDate, err := parseBillDateRange(startAt, endAt)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return s.repo.FindAllPaginated(page, limit, search, parsedAdminID, status, startDate, endDate)
 }
 
 func (s *billService) GetByID(id string) (models.Bill, error) {
@@ -236,6 +266,19 @@ type reminderStats struct {
 	errors  []string
 }
 
+type billDashboardTrend struct {
+	Month         string `json:"month"`
+	MonthKey      string `json:"month_key"`
+	Paid          int64  `json:"paid"`
+	Unpaid        int64  `json:"unpaid"`
+	Overdue       int64  `json:"overdue"`
+	Total         int64  `json:"total"`
+	AmountPaid    int64  `json:"amount_paid"`
+	AmountUnpaid  int64  `json:"amount_unpaid"`
+	AmountOverdue int64  `json:"amount_overdue"`
+	AmountTotal   int64  `json:"amount_total"`
+}
+
 func newReminderStats(total int) *reminderStats {
 	return &reminderStats{total: total}
 }
@@ -278,4 +321,127 @@ func (s *billService) GetDashboardStats() (map[string]interface{}, error) {
 
 func (s *billService) GetRecentPaidBills(limit int) ([]models.Bill, error) {
 	return s.repo.GetRecentPaidBills(limit)
+}
+
+func (s *billService) GetDashboardCharts(months int, adminID string) (map[string]interface{}, error) {
+	if months <= 0 {
+		months = 6
+	}
+	if months > 24 {
+		months = 24
+	}
+
+	adminID = strings.TrimSpace(adminID)
+	var parsedAdminID *uuid.UUID
+	if adminID != "" {
+		uid, err := uuid.Parse(adminID)
+		if err != nil {
+			return nil, errors.New("invalid admin_id")
+		}
+		parsedAdminID = &uid
+	}
+
+	now := time.Now()
+	startDate := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local).AddDate(0, -(months - 1), 0)
+
+	bills, err := s.repo.GetDashboardChartRows(startDate, parsedAdminID)
+	if err != nil {
+		return nil, err
+	}
+
+	trend := make([]billDashboardTrend, 0, months)
+	monthIndex := make(map[string]int, months)
+
+	for i := 0; i < months; i++ {
+		monthDate := startDate.AddDate(0, i, 0)
+		key := monthDate.Format("2006-01")
+		monthIndex[key] = i
+		trend = append(trend, billDashboardTrend{
+			Month:    monthDate.Format("Jan 2006"),
+			MonthKey: key,
+		})
+	}
+
+	statusTotals := map[string]int64{
+		"paid":    0,
+		"unpaid":  0,
+		"overdue": 0,
+	}
+	amountTotals := map[string]int64{
+		"paid":    0,
+		"unpaid":  0,
+		"overdue": 0,
+	}
+
+	for _, bill := range bills {
+		key := bill.BillDate.Format("2006-01")
+		idx, exists := monthIndex[key]
+		if !exists {
+			continue
+		}
+
+		status := strings.ToLower(strings.TrimSpace(bill.Status))
+		switch status {
+		case "paid":
+			trend[idx].Paid++
+			trend[idx].AmountPaid += int64(bill.Amount)
+			statusTotals["paid"]++
+			amountTotals["paid"] += int64(bill.Amount)
+		case "overdue":
+			trend[idx].Overdue++
+			trend[idx].AmountOverdue += int64(bill.Amount)
+			statusTotals["overdue"]++
+			amountTotals["overdue"] += int64(bill.Amount)
+		default:
+			trend[idx].Unpaid++
+			trend[idx].AmountUnpaid += int64(bill.Amount)
+			statusTotals["unpaid"]++
+			amountTotals["unpaid"] += int64(bill.Amount)
+		}
+
+		trend[idx].Total++
+		trend[idx].AmountTotal += int64(bill.Amount)
+	}
+
+	return map[string]interface{}{
+		"months":        months,
+		"range_start":   startDate,
+		"range_end":     now,
+		"trend":         trend,
+		"status_totals": statusTotals,
+		"amount_totals": amountTotals,
+	}, nil
+}
+
+func parseBillDateRange(startAt string, endAt string) (*time.Time, *time.Time, error) {
+	var startDate *time.Time
+	var endDate *time.Time
+	var rawStart *time.Time
+	var rawEnd *time.Time
+
+	if startAt != "" {
+		parsedStart, err := time.Parse("2006-01-02", startAt)
+		if err != nil {
+			return nil, nil, errors.New("invalid start_at format, expected YYYY-MM-DD")
+		}
+		rawStart = &parsedStart
+		start := time.Date(parsedStart.Year(), parsedStart.Month(), parsedStart.Day(), 0, 0, 0, 0, time.UTC)
+		startDate = &start
+	}
+
+	if endAt != "" {
+		parsedEnd, err := time.Parse("2006-01-02", endAt)
+		if err != nil {
+			return nil, nil, errors.New("invalid end_at format, expected YYYY-MM-DD")
+		}
+		rawEnd = &parsedEnd
+		end := time.Date(parsedEnd.Year(), parsedEnd.Month(), parsedEnd.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+		endDate = &end
+	}
+
+	if rawStart != nil && rawEnd != nil && rawStart.After(*rawEnd) {
+		return nil, nil, errors.New("start_at must be before or equal end_at")
+	}
+
+	return startDate, endDate, nil
 }

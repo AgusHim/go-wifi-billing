@@ -2,11 +2,14 @@ package controllers
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/Agushim/go_wifi_billing/dto"
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/services"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -20,7 +23,7 @@ func NewCustomerController(service services.CustomerService) *CustomerController
 
 func (c *CustomerController) RegisterRoutes(router fiber.Router) {
 	r := router.Group("/admin_api/customers")
-	r.Get("/", c.GetAll)
+	r.Get("/", middlewares.UserProtected(), c.GetAll)
 	r.Get("/by_user/:user_id", c.GetByUserID)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)
@@ -46,11 +49,23 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 	pageStr := ctx.Query("page", "1")
 	limitStr := ctx.Query("limit", "10")
 	search := ctx.Query("search", "")
+	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
-	customers, total, err := c.service.GetAll(page, limit, search)
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		userID, _ := userClaims["user_id"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "loket" && strings.TrimSpace(userID) != "" {
+			adminID = userID
+		}
+	}
+
+	customers, total, err := c.service.GetAll(page, limit, search, adminID)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "invalid admin_id") {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{
