@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -15,26 +17,25 @@ type WhatsAppService interface {
 
 type whatsappService struct {
 	baseURL string
+	apiKey  string
 	client  *http.Client
 }
 
 type SendMessageRequest struct {
 	PhoneNumber string `json:"phoneNumber"`
-	Message     string `json:"message"`
-	ScheduledAt string `json:"scheduledAt,omitempty"`
-	Priority    int    `json:"priority,omitempty"`
+	Text        string `json:"text"`
+	Mode        string `json:"mode,omitempty"`
 }
 
-type SendMessageResponse struct {
-	Success bool   `json:"success"`
-	JobID   string `json:"jobId"`
+type sendMessageErrorResponse struct {
 	Message string `json:"message"`
-	Error   string `json:"error,omitempty"`
+	Error   string `json:"error"`
 }
 
-func NewWhatsAppService(baseURL string) WhatsAppService {
+func NewWhatsAppService(baseURL, apiKey string) WhatsAppService {
 	return &whatsappService{
 		baseURL: baseURL,
+		apiKey:  apiKey,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -44,15 +45,18 @@ func NewWhatsAppService(baseURL string) WhatsAppService {
 func (s *whatsappService) SendMessage(phoneNumber, message string) error {
 	return s.send(SendMessageRequest{
 		PhoneNumber: phoneNumber,
-		Message:     message,
+		Text:        message,
+		Mode:        "chat",
 	})
 }
 
 func (s *whatsappService) SendScheduledMessage(phoneNumber, message string, scheduledAt time.Time) error {
+	_ = scheduledAt
+
 	return s.send(SendMessageRequest{
 		PhoneNumber: phoneNumber,
-		Message:     message,
-		ScheduledAt: scheduledAt.Format(time.RFC3339),
+		Text:        message,
+		Mode:        "chat",
 	})
 }
 
@@ -62,24 +66,47 @@ func (s *whatsappService) send(reqBody SendMessageRequest) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := s.client.Post(
-		fmt.Sprintf("%s/send", s.baseURL),
-		"application/json",
+	req, err := http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf("%s/messages/send", strings.TrimRight(s.baseURL, "/")),
 		bytes.NewBuffer(jsonData),
 	)
+	if err != nil {
+		return fmt.Errorf("failed to build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(s.apiKey) != "" {
+		req.Header.Set("X-API-KEY", s.apiKey)
+	}
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	var result SendMessageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		return nil
 	}
 
-	if !result.Success {
-		return fmt.Errorf("whatsapp api error: %s", result.Error)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("whatsapp api returned status %d", resp.StatusCode)
 	}
 
-	return nil
+	var result sendMessageErrorResponse
+	if len(body) > 0 && json.Unmarshal(body, &result) == nil {
+		switch {
+		case strings.TrimSpace(result.Error) != "":
+			return fmt.Errorf("whatsapp api returned status %d: %s", resp.StatusCode, result.Error)
+		case strings.TrimSpace(result.Message) != "":
+			return fmt.Errorf("whatsapp api returned status %d: %s", resp.StatusCode, result.Message)
+		}
+	}
+
+	if trimmedBody := strings.TrimSpace(string(body)); trimmedBody != "" {
+		return fmt.Errorf("whatsapp api returned status %d: %s", resp.StatusCode, trimmedBody)
+	}
+
+	return fmt.Errorf("whatsapp api returned status %d", resp.StatusCode)
 }

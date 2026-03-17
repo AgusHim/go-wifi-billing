@@ -72,9 +72,10 @@ func main() {
 	// Init WhatsApp service
 	whatsappBaseURL := os.Getenv("WHATSAPP_BOT_URL")
 	if whatsappBaseURL == "" {
-		whatsappBaseURL = "http://localhost:3030"
+		whatsappBaseURL = "http://localhost:3030/api/public/v1"
 	}
-	waSvc := services.NewWhatsAppService(whatsappBaseURL)
+	whatsappAPIKey := os.Getenv("WHATSAPP_API_KEY")
+	waSvc := services.NewWhatsAppService(whatsappBaseURL, whatsappAPIKey)
 
 	billRepo := repositories.NewBillRepository(gormDB)
 	billSvc := services.NewBillService(billRepo, subscriptionRepo, waSvc)

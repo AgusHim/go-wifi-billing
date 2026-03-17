@@ -84,6 +84,7 @@ Saat menambah domain baru (contoh: `invoice`), ikuti urutan:
 - `PORT`: port server (default `8080`).
 - `MIDTRANS_SERVER_KEY`: konfigurasi payment.
 - `WHATSAPP_BOT_URL`: endpoint WhatsApp service.
+- `WHATSAPP_API_KEY`: API key untuk header `X-API-KEY` ke WhatsApp service.
 
 ## Guardrails
 - Jangan edit file di luar scope task tanpa alasan kuat.
