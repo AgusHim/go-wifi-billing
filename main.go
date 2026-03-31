@@ -52,6 +52,16 @@ func main() {
 	packageSvc := services.NewPackageService(packageRepo)
 	packageCtrl := controllers.NewPackageController(packageSvc)
 
+	routerRepo := repositories.NewRouterRepository(gormDB)
+	routerImportBatchRepo := repositories.NewRouterImportBatchRepository(gormDB)
+	routerImportItemRepo := repositories.NewRouterImportItemRepository(gormDB)
+	networkPlanRepo := repositories.NewNetworkPlanRepository(gormDB)
+	serviceAccountRepo := repositories.NewServiceAccountRepository(gormDB)
+	serviceStatusHistoryRepo := repositories.NewServiceStatusHistoryRepository(gormDB)
+	voucherBatchRepo := repositories.NewVoucherBatchRepository(gormDB)
+	voucherRepo := repositories.NewVoucherRepository(gormDB)
+	renewalHistoryRepo := repositories.NewSubscriptionRenewalHistoryRepository(gormDB)
+
 	odcRepo := repositories.NewOdcRepository(gormDB)
 	odcSvc := services.NewOdcService(odcRepo)
 	odcCtrl := controllers.NewOdcController(odcSvc)
@@ -67,8 +77,6 @@ func main() {
 	customerSvc := services.NewCustomerService(customerRepo, userSvc, subscriptionSvc)
 	customerCtrl := controllers.NewCustomerController(customerSvc)
 
-	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc, customerSvc)
-
 	// Init WhatsApp service
 	whatsappBaseURL := os.Getenv("WHATSAPP_BOT_URL")
 	if whatsappBaseURL == "" {
@@ -78,7 +86,32 @@ func main() {
 	waSvc := services.NewWhatsAppService(whatsappBaseURL, whatsappAPIKey)
 
 	billRepo := repositories.NewBillRepository(gormDB)
-	billSvc := services.NewBillService(billRepo, subscriptionRepo, waSvc)
+	provisioningJobRepo := repositories.NewProvisioningJobRepository(gormDB)
+	provisioningLogRepo := repositories.NewProvisioningLogRepository(gormDB)
+	routerSvc := services.NewRouterService(
+		routerRepo,
+		provisioningLogRepo,
+		networkPlanRepo,
+		serviceAccountRepo,
+		routerImportBatchRepo,
+		routerImportItemRepo,
+	)
+	routerCtrl := controllers.NewRouterController(routerSvc)
+	routerSvc.StartHealthCheckScheduler()
+	provisioningSvc := services.NewProvisioningService(provisioningJobRepo, provisioningLogRepo)
+	provisioningCtrl := controllers.NewProvisioningController(provisioningSvc)
+	networkPlanSvc := services.NewNetworkPlanService(networkPlanRepo)
+	networkPlanCtrl := controllers.NewNetworkPlanController(networkPlanSvc)
+	serviceAccountSvc := services.NewServiceAccountService(serviceAccountRepo, provisioningJobRepo, provisioningLogRepo, routerRepo, serviceStatusHistoryRepo)
+	serviceAccountCtrl := controllers.NewServiceAccountController(serviceAccountSvc)
+	voucherSvc := services.NewVoucherService(voucherBatchRepo, voucherRepo, provisioningJobRepo, provisioningLogRepo, routerRepo)
+	voucherCtrl := controllers.NewVoucherController(voucherSvc)
+	billingProvisioningSvc := services.NewBillingProvisioningService(serviceAccountRepo, serviceAccountSvc, subscriptionRepo, serviceStatusHistoryRepo)
+	renewalSvc := services.NewRenewalService(subscriptionRepo, billRepo, renewalHistoryRepo)
+	renewalCtrl := controllers.NewRenewalController(renewalSvc)
+	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc, customerSvc, renewalSvc)
+	renewalSvc.StartScheduler()
+	billSvc := services.NewBillService(billRepo, subscriptionRepo, waSvc, billingProvisioningSvc)
 	billCtrl := controllers.NewBillController(billSvc)
 
 	complainRepo := repositories.NewComplainRepository(gormDB)
@@ -86,7 +119,7 @@ func main() {
 	complainCtrl := controllers.NewComplainController(complainSvc)
 
 	paymentRepo := repositories.NewPaymentRepository(gormDB)
-	paymentSvc := services.NewPaymentService(paymentRepo, subscriptionRepo, billRepo)
+	paymentSvc := services.NewPaymentService(paymentRepo, subscriptionRepo, billRepo, billingProvisioningSvc, renewalSvc)
 	paymentCtrl := controllers.NewPaymentController(paymentSvc)
 
 	// Setup Fiber
@@ -112,6 +145,12 @@ func main() {
 		billCtrl,
 		complainCtrl,
 		paymentCtrl,
+		routerCtrl,
+		provisioningCtrl,
+		networkPlanCtrl,
+		serviceAccountCtrl,
+		renewalCtrl,
+		voucherCtrl,
 	)
 
 	port := os.Getenv("PORT")

@@ -18,6 +18,7 @@ type BillRepository interface {
 	Update(bill *models.Bill) error
 	Delete(id string) error
 	FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error)
+	FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID, month int, year int) (*models.Bill, error)
 	FindUnpaidBills() ([]models.Bill, error)
 	GetDashboardStats() (map[string]int64, error)
 	GetRecentPaidBills(limit int) ([]models.Bill, error)
@@ -148,6 +149,19 @@ func (r *billRepository) FindBillByCustomerAndMonth(customerID string, month int
 	err := r.db.
 		Where("customer_id = ? AND EXTRACT(MONTH FROM bill_date) = ? AND EXTRACT(YEAR FROM bill_date) = ?",
 			customerID, month, year).
+		First(&bill).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return &bill, nil
+}
+
+func (r *billRepository) FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID, month int, year int) (*models.Bill, error) {
+	var bill models.Bill
+	err := r.db.
+		Where("subscription_id = ? AND EXTRACT(MONTH FROM bill_date) = ? AND EXTRACT(YEAR FROM bill_date) = ?",
+			subscriptionID, month, year).
 		First(&bill).Error
 
 	if err != nil {

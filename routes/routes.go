@@ -17,6 +17,12 @@ func Setup(
 	billCtrl *controllers.BillController,
 	complainCtrl *controllers.ComplainController,
 	paymentCtrl *controllers.PaymentController,
+	routerCtrl *controllers.RouterController,
+	provisioningCtrl *controllers.ProvisioningController,
+	networkPlanCtrl *controllers.NetworkPlanController,
+	serviceAccountCtrl *controllers.ServiceAccountController,
+	renewalCtrl *controllers.RenewalController,
+	voucherCtrl *controllers.VoucherController,
 ) {
 
 	coverageCtrl.RegisterRoutes(app)
@@ -29,6 +35,12 @@ func Setup(
 	billCtrl.RegisterRoutes(app)
 	complainCtrl.RegisterRoutes(app)
 	paymentCtrl.RegisterRoutes(app)
+	routerCtrl.RegisterRoutes(app)
+	provisioningCtrl.RegisterRoutes(app)
+	networkPlanCtrl.RegisterRoutes(app)
+	serviceAccountCtrl.RegisterRoutes(app)
+	renewalCtrl.RegisterRoutes(app)
+	voucherCtrl.RegisterRoutes(app)
 
 	// health
 	app.Get("/health", func(c *fiber.Ctx) error {

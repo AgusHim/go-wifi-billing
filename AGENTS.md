@@ -85,6 +85,14 @@ Saat menambah domain baru (contoh: `invoice`), ikuti urutan:
 - `MIDTRANS_SERVER_KEY`: konfigurasi payment.
 - `WHATSAPP_BOT_URL`: endpoint WhatsApp service.
 - `WHATSAPP_API_KEY`: API key untuk header `X-API-KEY` ke WhatsApp service.
+- `MIKROTIK_SECRET_KEY`: secret untuk enkripsi credential router MikroTik.
+- `FEATURE_PROVISIONING_ENABLED`: aktifkan proses async provisioning manual ke MikroTik.
+- `FEATURE_BILLING_PROVISIONING_ENABLED`: aktifkan otomasi billing ke provisioning seperti `payment confirmed -> unsuspend/create` dan `bill overdue -> suspend`.
+- `FEATURE_RENEWAL_AUTOGEN_ENABLED`: aktifkan scheduler renewal invoice otomatis untuk subscription `auto_generate_invoice`.
+- `FEATURE_RECURRING_PAYMENT_ENABLED`: aktifkan sync recurring profile untuk subscription `gateway_recurring`.
+- `FEATURE_ROUTER_SYNC_ENABLED`: aktifkan scheduler health check router berkala.
+- `ROUTER_HEALTHCHECK_INTERVAL`: interval scheduler health check router, contoh `10m`.
+- `MIDTRANS_ENVIRONMENT`: `sandbox` atau `production` untuk recurring sync Midtrans.
 
 ## Guardrails
 - Jangan edit file di luar scope task tanpa alasan kuat.

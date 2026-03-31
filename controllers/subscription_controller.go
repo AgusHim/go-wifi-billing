@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"log"
 	"strconv"
 
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
@@ -14,10 +15,11 @@ import (
 type SubscriptionController struct {
 	service         services.SubscriptionService
 	customerService services.CustomerService
+	renewalService  services.RenewalService
 }
 
-func NewSubscriptionController(service services.SubscriptionService, customerService services.CustomerService) *SubscriptionController {
-	return &SubscriptionController{service, customerService}
+func NewSubscriptionController(service services.SubscriptionService, customerService services.CustomerService, renewalService services.RenewalService) *SubscriptionController {
+	return &SubscriptionController{service, customerService, renewalService}
 }
 
 func (c *SubscriptionController) RegisterRoutes(router fiber.Router) {
@@ -42,6 +44,11 @@ func (c *SubscriptionController) Create(ctx *fiber.Ctx) error {
 
 	if err := c.service.Create(&subscription); err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	if c.renewalService != nil {
+		if err := c.renewalService.SyncRecurringProfile(subscription.ID); err != nil {
+			log.Printf("[renewal] failed to sync recurring profile after create for subscription %s: %v", subscription.ID, err)
+		}
 	}
 
 	return ctx.JSON(fiber.Map{"success": true, "data": subscription, "message": "Subscription created"})
@@ -142,6 +149,11 @@ func (c *SubscriptionController) Update(ctx *fiber.Ctx) error {
 	n_subs, err := c.service.Update(id, &subscription)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	if c.renewalService != nil {
+		if err := c.renewalService.SyncRecurringProfile(n_subs.ID); err != nil {
+			log.Printf("[renewal] failed to sync recurring profile after update for subscription %s: %v", n_subs.ID, err)
+		}
 	}
 
 	return ctx.JSON(fiber.Map{"success": true, "data": n_subs, "message": "Subscription updated"})

@@ -12,6 +12,7 @@ type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
 	FindAll(page, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error)
 	FindForBill(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
+	FindAutoRenewCandidates(threshold time.Time, renewalMode string) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
 	FindByCustomerID(customerID uuid.UUID) (*models.Subscription, error)
 	Update(subscription *models.Subscription) error
@@ -39,7 +40,14 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 	query := r.db.Model(&models.Subscription{}).
 		Preload("Customer").
 		Preload("Customer.User").
-		Preload("Package")
+		Preload("Package").
+		Preload("NetworkPlan").
+		Preload("NetworkPlan.Router").
+		Preload("ServiceAccounts").
+		Preload("ServiceAccounts.Router").
+		Preload("RenewalHistories").
+		Preload("RenewalHistories.Bill").
+		Preload("RenewalHistories.Payment")
 
 	// Filter by CustomerID
 	if customerID != nil && *customerID != "" {
@@ -95,6 +103,27 @@ func (r *subscriptionRepository) FindForBill(customerID *string, status *string,
 		Preload("Customer").
 		Preload("Customer.User").
 		Preload("Package").
+		Preload("NetworkPlan").
+		Preload("NetworkPlan.Router").
+		Preload("ServiceAccounts").
+		Preload("ServiceAccounts.Router").
+		Preload("RenewalHistories").
+		Preload("RenewalHistories.Bill").
+		Preload("RenewalHistories.Payment").
+		Find(&subscriptions).Error
+	return subscriptions, err
+}
+
+func (r *subscriptionRepository) FindAutoRenewCandidates(threshold time.Time, renewalMode string) ([]models.Subscription, error) {
+	var subscriptions []models.Subscription
+	err := r.db.
+		Where("auto_renew = ?", true).
+		Where("LOWER(renewal_mode) = LOWER(?)", renewalMode).
+		Where("LOWER(status) IN ?", []string{"active", "suspended"}).
+		Where("end_date <= ?", threshold).
+		Preload("Package").
+		Preload("NetworkPlan").
+		Preload("NetworkPlan.Router").
 		Find(&subscriptions).Error
 	return subscriptions, err
 }
@@ -105,6 +134,13 @@ func (r *subscriptionRepository) FindByID(id uuid.UUID) (*models.Subscription, e
 		Preload("Customer").
 		Preload("Customer.User").
 		Preload("Package").
+		Preload("NetworkPlan").
+		Preload("NetworkPlan.Router").
+		Preload("ServiceAccounts").
+		Preload("ServiceAccounts.Router").
+		Preload("RenewalHistories").
+		Preload("RenewalHistories.Bill").
+		Preload("RenewalHistories.Payment").
 		First(&subscription, "id = ?", id).Error
 	return &subscription, err
 }
@@ -115,6 +151,13 @@ func (r *subscriptionRepository) FindByCustomerID(customerID uuid.UUID) (*models
 		Preload("Customer").
 		Preload("Customer.User").
 		Preload("Package").
+		Preload("NetworkPlan").
+		Preload("NetworkPlan.Router").
+		Preload("ServiceAccounts").
+		Preload("ServiceAccounts.Router").
+		Preload("RenewalHistories").
+		Preload("RenewalHistories.Bill").
+		Preload("RenewalHistories.Payment").
 		Where("customer_id = ?", customerID).
 		First(&subscription).Error
 
@@ -126,7 +169,7 @@ func (r *subscriptionRepository) FindByCustomerID(customerID uuid.UUID) (*models
 }
 
 func (r *subscriptionRepository) Update(subscription *models.Subscription) error {
-	return r.db.Omit("Customer", "Package").Save(subscription).Error
+	return r.db.Omit("Customer", "Package", "RenewalHistories", "ServiceAccounts").Save(subscription).Error
 }
 
 func (r *subscriptionRepository) Delete(id uuid.UUID) error {

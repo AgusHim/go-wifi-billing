@@ -32,13 +32,24 @@ type BillService interface {
 }
 
 type billService struct {
-	repo    repositories.BillRepository
-	subRepo repositories.SubscriptionRepository
-	waSvc   WhatsAppService
+	repo                   repositories.BillRepository
+	subRepo                repositories.SubscriptionRepository
+	waSvc                  WhatsAppService
+	billingProvisioningSvc BillingProvisioningService
 }
 
-func NewBillService(repo repositories.BillRepository, subRepo repositories.SubscriptionRepository, waSvc WhatsAppService) BillService {
-	return &billService{repo, subRepo, waSvc}
+func NewBillService(
+	repo repositories.BillRepository,
+	subRepo repositories.SubscriptionRepository,
+	waSvc WhatsAppService,
+	billingProvisioningSvc BillingProvisioningService,
+) BillService {
+	return &billService{
+		repo:                   repo,
+		subRepo:                subRepo,
+		waSvc:                  waSvc,
+		billingProvisioningSvc: billingProvisioningSvc,
+	}
 }
 
 func (s *billService) GetAll(page, limit int, search string, adminID string, status string, startAt string, endAt string) ([]models.Bill, int64, error) {
@@ -102,6 +113,7 @@ func (s *billService) Update(id string, input models.Bill) (models.Bill, error) 
 	if err != nil {
 		return bill, err
 	}
+	previousStatus := strings.TrimSpace(strings.ToLower(bill.Status))
 	bill.Amount = input.Amount
 	bill.Status = input.Status
 	bill.BillDate = input.BillDate
@@ -109,6 +121,19 @@ func (s *billService) Update(id string, input models.Bill) (models.Bill, error) 
 	bill.TerminatedDate = input.TerminatedDate
 	bill.UpdatedAt = time.Now()
 	err = s.repo.Update(&bill)
+	if err != nil {
+		return bill, err
+	}
+
+	if previousStatus != "overdue" && strings.EqualFold(strings.TrimSpace(bill.Status), "overdue") && s.billingProvisioningSvc != nil {
+		subscription, subErr := s.subRepo.FindByID(bill.SubscriptionID)
+		if subErr != nil {
+			log.Printf("[billing-provisioning] failed to load subscription %s for overdue bill %s: %v", bill.SubscriptionID, bill.ID, subErr)
+		} else {
+			s.billingProvisioningSvc.HandleBillOverdue(&bill, subscription)
+		}
+	}
+
 	return bill, err
 }
 
@@ -131,7 +156,7 @@ func (s *billService) GenerateMonthlyBills() error {
 
 	for _, sub := range subs {
 		// Cek apakah sudah ada bill bulan ini
-		existing, err := s.repo.FindBillByCustomerAndMonth(sub.CustomerID.String(), currentMonth, currentYear)
+		existing, err := s.repo.FindBillBySubscriptionAndMonth(sub.ID, currentMonth, currentYear)
 
 		if err == nil && existing != nil {
 			continue // sudah ada bill bulan ini

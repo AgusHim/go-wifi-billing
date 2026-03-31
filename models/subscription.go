@@ -8,26 +8,40 @@ import (
 )
 
 type Subscription struct {
-	ID                 uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
-	CustomerID         uuid.UUID      `json:"customer_id" gorm:"type:uuid;not null"`
-	PackageID          uuid.UUID      `json:"package_id" gorm:"type:uuid;not null"`
-	PeriodType         string         `json:"period_type"`
-	IsIncludePPN       bool           `json:"is_include_ppn"`
-	IsActiveUniqueCode bool           `json:"is_active_unique_code" gorm:"default:false"`
-	PaymentType        string         `json:"payment_type"`
-	DueDay             int            `json:"due_day"`
-	StartDate          time.Time      `json:"start_date"`
-	EndDate            time.Time      `json:"end_date"`
-	AutoRenew          bool           `json:"auto_renew"`
-	Status             string         `json:"status"` // active, suspended, terminated
-	Description        string         `json:"description"`
-	CreatedAt          time.Time      `json:"created_at"`
-	UpdatedAt          time.Time      `json:"updated_at"`
-	DeletedAt          gorm.DeletedAt `gorm:"index" json:"deleted_at"`
+	ID                      uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
+	CustomerID              uuid.UUID      `json:"customer_id" gorm:"type:uuid;not null"`
+	PackageID               uuid.UUID      `json:"package_id" gorm:"type:uuid;not null"`
+	NetworkPlanID           *uuid.UUID     `json:"network_plan_id" gorm:"type:uuid"`
+	ServiceType             string         `json:"service_type"`
+	PeriodType              string         `json:"period_type"`
+	IsIncludePPN            bool           `json:"is_include_ppn"`
+	IsActiveUniqueCode      bool           `json:"is_active_unique_code" gorm:"default:false"`
+	PaymentType             string         `json:"payment_type"`
+	DueDay                  int            `json:"due_day"`
+	StartDate               time.Time      `json:"start_date"`
+	EndDate                 time.Time      `json:"end_date"`
+	AutoRenew               bool           `json:"auto_renew"`
+	RenewalMode             string         `json:"renewal_mode" gorm:"default:manual_invoice"`
+	RecurringConsent        bool           `json:"recurring_consent" gorm:"default:false"`
+	RecurringProvider       string         `json:"recurring_provider"`
+	RecurringReferenceID    string         `json:"recurring_reference_id"`
+	RecurringTokenEncrypted string         `json:"-" gorm:"column:recurring_token_encrypted"`
+	RecurringToken          string         `json:"recurring_token,omitempty" gorm:"-"`
+	HasRecurringToken       bool           `json:"has_recurring_token" gorm:"-"`
+	RecurringStatus         string         `json:"recurring_status" gorm:"default:disabled"`
+	RecurringLastSyncedAt   *time.Time     `json:"recurring_last_synced_at"`
+	Status                  string         `json:"status"` // active, suspended, terminated
+	Description             string         `json:"description"`
+	CreatedAt               time.Time      `json:"created_at"`
+	UpdatedAt               time.Time      `json:"updated_at"`
+	DeletedAt               gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 
 	// Relationships (optional preload)
-	Customer *Customer `json:"customer" gorm:"foreignKey:CustomerID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-	Package  *Package  `json:"package" gorm:"foreignKey:PackageID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Customer         *Customer                    `json:"customer" gorm:"foreignKey:CustomerID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Package          *Package                     `json:"package" gorm:"foreignKey:PackageID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	NetworkPlan      *NetworkPlan                 `json:"network_plan,omitempty" gorm:"foreignKey:NetworkPlanID"`
+	ServiceAccounts  []ServiceAccount             `json:"service_accounts,omitempty" gorm:"foreignKey:SubscriptionID"`
+	RenewalHistories []SubscriptionRenewalHistory `json:"renewal_histories,omitempty" gorm:"foreignKey:SubscriptionID"`
 }
 
 func (s *Subscription) BeforeCreate(tx *gorm.DB) (err error) {

@@ -19,7 +19,8 @@ type CreateCustomerDTO struct {
 	Latitude      *float64 `json:"latitude,omitempty" validate:"omitempty,min=-90,max=90"`
 	Longitude     *float64 `json:"longitude,omitempty" validate:"omitempty,min=-180,max=180"`
 	Mode          *string  `json:"mode,omitempty" validate:"omitempty"`
-	IDPPOE        *string  `json:"id_ppoe,omitempty"`
-	ProfilePPOE   *string  `json:"profile_ppoe,omitempty"`
-	AdminID       *string  `json:"admin_id,omitempty" validate:"omitempty,uuid4"`
+	// Legacy PPPoE fields kept temporarily for backward compatibility.
+	IDPPOE      *string `json:"id_ppoe,omitempty"`
+	ProfilePPOE *string `json:"profile_ppoe,omitempty"`
+	AdminID     *string `json:"admin_id,omitempty" validate:"omitempty,uuid4"`
 }

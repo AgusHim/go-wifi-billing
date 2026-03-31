@@ -31,15 +31,19 @@ type PaymentService interface {
 }
 
 type paymentService struct {
-	repo     repositories.PaymentRepository
-	subcRepo repositories.SubscriptionRepository
-	billRepo repositories.BillRepository
+	repo                   repositories.PaymentRepository
+	subcRepo               repositories.SubscriptionRepository
+	billRepo               repositories.BillRepository
+	billingProvisioningSvc BillingProvisioningService
+	renewalSvc             RenewalService
 }
 
 func NewPaymentService(
 	repo repositories.PaymentRepository,
 	subcRepo repositories.SubscriptionRepository,
 	billRepo repositories.BillRepository,
+	billingProvisioningSvc BillingProvisioningService,
+	renewalSvc RenewalService,
 ) PaymentService {
 	env := os.Getenv("MIDTRANS_ENV")
 	if env == "sandbox" {
@@ -50,9 +54,11 @@ func NewPaymentService(
 	midtrans.ServerKey = os.Getenv("MIDTRANS_SERVER_KEY")
 	midtrans.ClientKey = os.Getenv("MIDTRANS_CLIENT_KEY")
 	return &paymentService{
-		repo,
-		subcRepo,
-		billRepo,
+		repo:                   repo,
+		subcRepo:               subcRepo,
+		billRepo:               billRepo,
+		billingProvisioningSvc: billingProvisioningSvc,
+		renewalSvc:             renewalSvc,
 	}
 }
 
@@ -97,16 +103,19 @@ func (s *paymentService) Create(input models.Payment) (*models.Payment, error) {
 	input.CreatedAt = time.Now()
 	input.UpdatedAt = time.Now()
 	err = s.repo.Create(&input)
+	if err != nil {
+		return nil, err
+	}
 
-	if input.Status == "confirmed" {
-		nbill, nsubs, nerr := s.UpdateBillAndSubs(input, bill)
+	if strings.EqualFold(strings.TrimSpace(input.Status), "confirmed") {
+		nbill, nsubs, nerr := s.handleConfirmation(&input, &bill)
 		if nerr != nil {
 			return nil, nerr
 		}
 		input.Bill = *nbill
 		input.Bill.Subscription = *nsubs
 	}
-	return &input, err
+	return &input, nil
 }
 
 func (s *paymentService) BatchCreate(inputs []models.Payment) ([]models.Payment, error) {
@@ -126,6 +135,7 @@ func (s *paymentService) Update(id string, input models.Payment) (*models.Paymen
 	if err != nil {
 		return nil, err
 	}
+	previousStatus := strings.TrimSpace(strings.ToLower(payment.Status))
 
 	bill, err := s.billRepo.FindByID(input.BillID.String())
 	if err != nil {
@@ -146,8 +156,8 @@ func (s *paymentService) Update(id string, input models.Payment) (*models.Paymen
 	}
 
 	// Update Bill And Subscription
-	if payment.Status == "confirmed" {
-		nbill, nsubs, nerr := s.UpdateBillAndSubs(payment, bill)
+	if previousStatus != "confirmed" && strings.EqualFold(strings.TrimSpace(payment.Status), "confirmed") {
+		nbill, nsubs, nerr := s.handleConfirmation(&payment, &bill)
 		if nerr != nil {
 			return nil, nerr
 		}
@@ -155,7 +165,7 @@ func (s *paymentService) Update(id string, input models.Payment) (*models.Paymen
 		payment.Bill.Subscription = *nsubs
 	}
 
-	return &payment, err
+	return &payment, nil
 }
 
 func (s *paymentService) Delete(id string) error {
@@ -197,6 +207,30 @@ func (s *paymentService) UpdateBillAndSubs(input models.Payment, bill models.Bil
 		return nil, nil, err
 	}
 	return &bill, subs, nil
+}
+
+func (s *paymentService) handleConfirmation(payment *models.Payment, bill *models.Bill) (*models.Bill, *models.Subscription, error) {
+	if strings.EqualFold(strings.TrimSpace(bill.Status), "paid") {
+		subscription, err := s.subcRepo.FindByID(bill.SubscriptionID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return bill, subscription, nil
+	}
+
+	nbill, nsubs, err := s.UpdateBillAndSubs(*payment, *bill)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if s.billingProvisioningSvc != nil {
+		s.billingProvisioningSvc.HandlePaymentConfirmed(payment, nbill, nsubs)
+	}
+	if s.renewalSvc != nil {
+		_ = s.renewalSvc.RecordPaymentConfirmed(nsubs.ID, nbill.ID, payment.ID, fmt.Sprintf("Payment %s confirmed", payment.ID))
+	}
+
+	return nbill, nsubs, nil
 }
 
 func (s *paymentService) RollbackBillAndSubs(bill models.Bill) (*models.Bill, *models.Subscription, error) {
@@ -279,16 +313,17 @@ func (s *paymentService) HandleMindtransCallback(paymentID string, status string
 	if err != nil {
 		return err
 	}
+	previousStatus := strings.TrimSpace(strings.ToLower(payment.Status))
 	payment_status := getStatus(status)
 	payment.Status = payment_status
 
 	// Update Bill And Subscription
-	if payment.Status == "confirmed" {
+	if previousStatus != "confirmed" && payment.Status == "confirmed" {
 		bill, nerr := s.billRepo.FindByID(payment.BillID.String())
 		if nerr != nil {
 			return nerr
 		}
-		nbill, nsubs, nerr := s.UpdateBillAndSubs(payment, bill)
+		nbill, nsubs, nerr := s.handleConfirmation(&payment, &bill)
 		if nerr != nil {
 			return nerr
 		}
