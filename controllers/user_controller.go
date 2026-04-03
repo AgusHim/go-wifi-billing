@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/Agushim/go_wifi_billing/dto"
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
@@ -93,14 +94,23 @@ func (ctrl *UserController) UpdateMe(c *fiber.Ctx) error {
 
 func (ctrl *UserController) GetAll(c *fiber.Ctx) error {
 	search := c.Query("search", "")
-	role := c.Query("role", "")
+	roleParam := c.Query("role", "")
 	pageStr := c.Query("page", "1")
 	limitStr := c.Query("limit", "10")
 
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
-	users, total, err := ctrl.service.GetAll(page, limit, role, search)
+	var roles []string
+	if roleParam != "" {
+		for _, r := range strings.Split(roleParam, ",") {
+			if trimmed := strings.TrimSpace(r); trimmed != "" {
+				roles = append(roles, trimmed)
+			}
+		}
+	}
+
+	users, total, err := ctrl.service.GetAll(page, limit, roles, search)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

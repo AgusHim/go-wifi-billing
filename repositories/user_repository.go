@@ -13,7 +13,7 @@ type UserRepository interface {
 	Create(user *models.User) error
 	GetByEmail(email string) (*models.User, error)
 	GetByID(id uuid.UUID) (*models.User, error)
-	GetAll(page int, limit int, role string, search string) ([]models.User, int64, error)
+	GetAll(page int, limit int, roles []string, search string) ([]models.User, int64, error)
 	Update(user *models.User) error
 	Delete(id uuid.UUID) error
 	CheckIsRegistered(email string, phone string) (*models.User, error)
@@ -49,15 +49,17 @@ func (r *userRepository) GetByID(id uuid.UUID) (*models.User, error) {
 	return &u, nil
 }
 
-func (r *userRepository) GetAll(page int, limit int, role string, search string) ([]models.User, int64, error) {
+func (r *userRepository) GetAll(page int, limit int, roles []string, search string) ([]models.User, int64, error) {
 	var users []models.User
 	var total int64
 
 	query := r.db.Model(&models.User{})
 
 	// Filter berdasarkan role jika ada
-	if role != "" {
-		query = query.Where("role = ?", role)
+	if len(roles) == 1 {
+		query = query.Where("role = ?", roles[0])
+	} else if len(roles) > 1 {
+		query = query.Where("role IN ?", roles)
 	}
 
 	if search != "" {
