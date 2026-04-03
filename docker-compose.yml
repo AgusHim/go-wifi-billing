@@ -17,6 +17,8 @@ services:
       - MIDTRANS_ENV=${MIDTRANS_ENV}
       - MIDTRANS_SERVER_KEY=${MIDTRANS_SERVER_KEY}
       - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY}
+      - WHATSAPP_BOT_URL=${WHATSAPP_BOT_URL}
+      - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
     command: ./main # or `air` if using hot reload
     working_dir: /app
 
