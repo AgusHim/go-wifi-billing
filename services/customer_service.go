@@ -82,6 +82,10 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 	if body.PortOdp != nil {
 		portOdp = *body.PortOdp
 	}
+	description := ""
+	if body.Description != nil {
+		description = *body.Description
+	}
 
 	// Buat customer baru
 	customer := &models.Customer{
@@ -98,6 +102,7 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 		IsSendWa:      *body.IsSendWA,
 		Status:        *body.Status,
 		Address:       *body.Address,
+		Description:   description,
 		Latitude:      *body.Latitude,
 		Longitude:     *body.Longitude,
 		Mode:          *body.Mode,

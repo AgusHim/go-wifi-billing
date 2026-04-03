@@ -10,7 +10,7 @@ import (
 
 type BillRepository interface {
 	FindAll() ([]models.Bill, error)
-	FindAllPaginated(page, limit int, search string, adminID *uuid.UUID, status string, startDate *time.Time, endDate *time.Time) ([]models.Bill, int64, error)
+	FindAllPaginated(page, limit int, search string, adminID *uuid.UUID, status string, startDate *time.Time, endDate *time.Time, coverageID *uuid.UUID) ([]models.Bill, int64, error)
 	FindByID(id string) (models.Bill, error)
 	FindByPublicID(publicID string) (*models.Bill, error)
 	FindByUserID(userID string) ([]models.Bill, error)
@@ -51,6 +51,7 @@ func (r *billRepository) FindAllPaginated(
 	status string,
 	startDate *time.Time,
 	endDate *time.Time,
+	coverageID *uuid.UUID,
 ) ([]models.Bill, int64, error) {
 	var bills []models.Bill
 	var total int64
@@ -61,11 +62,16 @@ func (r *billRepository) FindAllPaginated(
 		Preload("Subscription").
 		Preload("Subscription.Package")
 
-	// Apply search filter if provided
+	// Join customers table when needed for search or coverage filter
+	if search != "" || coverageID != nil {
+		query = query.Joins("JOIN customers ON customers.id = bills.customer_id")
+	}
 	if search != "" {
-		query = query.Joins("JOIN customers ON customers.id = bills.customer_id").
-			Joins("JOIN users ON users.id = customers.user_id").
+		query = query.Joins("JOIN users ON users.id = customers.user_id").
 			Where("LOWER(users.name) LIKE LOWER(?)", "%"+search+"%")
+	}
+	if coverageID != nil {
+		query = query.Where("customers.coverage_id = ?", *coverageID)
 	}
 	if adminID != nil {
 		query = query.Where("bills.admin_id = ?", *adminID)

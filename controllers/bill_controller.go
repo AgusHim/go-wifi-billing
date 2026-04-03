@@ -48,6 +48,7 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 	status := strings.TrimSpace(ctx.Query("status", ""))
 	startAt := strings.TrimSpace(ctx.Query("start_at", ""))
 	endAt := strings.TrimSpace(ctx.Query("end_at", ""))
+	coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
@@ -60,13 +61,14 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 		}
 	}
 
-	data, total, err := c.service.GetAll(page, limit, search, adminID, status, startAt, endAt)
+	data, total, err := c.service.GetAll(page, limit, search, adminID, status, startAt, endAt, coverageID)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "invalid admin_id") ||
 			strings.Contains(strings.ToLower(err.Error()), "invalid status") ||
 			strings.Contains(strings.ToLower(err.Error()), "invalid start_at format") ||
 			strings.Contains(strings.ToLower(err.Error()), "invalid end_at format") ||
-			strings.Contains(strings.ToLower(err.Error()), "start_at must be before or equal end_at") {
+			strings.Contains(strings.ToLower(err.Error()), "start_at must be before or equal end_at") ||
+			strings.Contains(strings.ToLower(err.Error()), "invalid coverage_id") {
 			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})

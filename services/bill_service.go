@@ -16,7 +16,7 @@ import (
 )
 
 type BillService interface {
-	GetAll(page, limit int, search string, adminID string, status string, startAt string, endAt string) ([]models.Bill, int64, error)
+	GetAll(page, limit int, search string, adminID string, status string, startAt string, endAt string, coverageID string) ([]models.Bill, int64, error)
 	GetByID(id string) (models.Bill, error)
 	Create(input models.Bill) (models.Bill, error)
 	Update(id string, input models.Bill) (models.Bill, error)
@@ -52,11 +52,12 @@ func NewBillService(
 	}
 }
 
-func (s *billService) GetAll(page, limit int, search string, adminID string, status string, startAt string, endAt string) ([]models.Bill, int64, error) {
+func (s *billService) GetAll(page, limit int, search string, adminID string, status string, startAt string, endAt string, coverageID string) ([]models.Bill, int64, error) {
 	adminID = strings.TrimSpace(adminID)
 	status = strings.TrimSpace(strings.ToLower(status))
 	startAt = strings.TrimSpace(startAt)
 	endAt = strings.TrimSpace(endAt)
+	coverageID = strings.TrimSpace(coverageID)
 
 	var parsedAdminID *uuid.UUID
 	if adminID != "" {
@@ -80,7 +81,16 @@ func (s *billService) GetAll(page, limit int, search string, adminID string, sta
 		return nil, 0, err
 	}
 
-	return s.repo.FindAllPaginated(page, limit, search, parsedAdminID, status, startDate, endDate)
+	var parsedCoverageID *uuid.UUID
+	if coverageID != "" {
+		uid, err := uuid.Parse(coverageID)
+		if err != nil {
+			return nil, 0, errors.New("invalid coverage_id")
+		}
+		parsedCoverageID = &uid
+	}
+
+	return s.repo.FindAllPaginated(page, limit, search, parsedAdminID, status, startDate, endDate, parsedCoverageID)
 }
 
 func (s *billService) GetByID(id string) (models.Bill, error) {
