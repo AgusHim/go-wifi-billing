@@ -10,9 +10,26 @@ import (
 	"time"
 )
 
+type BulkMessageItem struct {
+	PhoneNumber string `json:"phone_number"`
+	Message     string `json:"message"`
+}
+
+type BulkMessageResult struct {
+	SuccessCount int                  `json:"success_count"`
+	FailCount    int                  `json:"fail_count"`
+	Errors       []BulkMessageItemErr `json:"errors"`
+}
+
+type BulkMessageItemErr struct {
+	PhoneNumber string `json:"phone_number"`
+	Error       string `json:"error"`
+}
+
 type WhatsAppService interface {
 	SendMessage(phoneNumber, message string) error
 	SendScheduledMessage(phoneNumber, message string, scheduledAt time.Time) error
+	SendBulkMessages(messages []BulkMessageItem) BulkMessageResult
 }
 
 type whatsappService struct {
@@ -58,6 +75,22 @@ func (s *whatsappService) SendScheduledMessage(phoneNumber, message string, sche
 		Text:        message,
 		Mode:        "chat",
 	})
+}
+
+func (s *whatsappService) SendBulkMessages(messages []BulkMessageItem) BulkMessageResult {
+	result := BulkMessageResult{}
+	for _, item := range messages {
+		if err := s.SendMessage(item.PhoneNumber, item.Message); err != nil {
+			result.FailCount++
+			result.Errors = append(result.Errors, BulkMessageItemErr{
+				PhoneNumber: item.PhoneNumber,
+				Error:       err.Error(),
+			})
+		} else {
+			result.SuccessCount++
+		}
+	}
+	return result
 }
 
 func (s *whatsappService) send(reqBody SendMessageRequest) error {
