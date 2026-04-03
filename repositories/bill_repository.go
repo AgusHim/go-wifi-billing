@@ -62,8 +62,8 @@ func (r *billRepository) FindAllPaginated(
 		Preload("Subscription").
 		Preload("Subscription.Package")
 
-	// Join customers table when needed for search or coverage filter
-	if search != "" || coverageID != nil {
+	// Join customers table when needed for search, coverage, or admin filter
+	if search != "" || coverageID != nil || adminID != nil {
 		query = query.Joins("JOIN customers ON customers.id = bills.customer_id")
 	}
 	if search != "" {
@@ -74,7 +74,7 @@ func (r *billRepository) FindAllPaginated(
 		query = query.Where("customers.coverage_id = ?", *coverageID)
 	}
 	if adminID != nil {
-		query = query.Where("bills.admin_id = ?", *adminID)
+		query = query.Where("customers.admin_id = ?", *adminID)
 	}
 	if status != "" {
 		query = query.Where("LOWER(bills.status) = LOWER(?)", status)
