@@ -107,6 +107,9 @@ func main() {
 	voucherSvc := services.NewVoucherService(voucherBatchRepo, voucherRepo, provisioningJobRepo, provisioningLogRepo, routerRepo)
 	voucherCtrl := controllers.NewVoucherController(voucherSvc)
 	whatsappCtrl := controllers.NewWhatsAppController(waSvc)
+	waTemplateRepo := repositories.NewWhatsAppTemplateRepository(gormDB)
+	waTemplateSvc := services.NewWhatsAppTemplateService(waTemplateRepo)
+	waTemplateCtrl := controllers.NewWhatsAppTemplateController(waTemplateSvc)
 	billingProvisioningSvc := services.NewBillingProvisioningService(serviceAccountRepo, serviceAccountSvc, subscriptionRepo, serviceStatusHistoryRepo)
 	renewalSvc := services.NewRenewalService(subscriptionRepo, billRepo, renewalHistoryRepo)
 	renewalCtrl := controllers.NewRenewalController(renewalSvc)
@@ -153,6 +156,7 @@ func main() {
 		renewalCtrl,
 		voucherCtrl,
 		whatsappCtrl,
+		waTemplateCtrl,
 	)
 
 	port := os.Getenv("PORT")

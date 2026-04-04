@@ -24,6 +24,7 @@ func Setup(
 	renewalCtrl *controllers.RenewalController,
 	voucherCtrl *controllers.VoucherController,
 	whatsappCtrl *controllers.WhatsAppController,
+	whatsappTemplateCtrl *controllers.WhatsAppTemplateController,
 ) {
 
 	coverageCtrl.RegisterRoutes(app)
@@ -43,6 +44,7 @@ func Setup(
 	renewalCtrl.RegisterRoutes(app)
 	voucherCtrl.RegisterRoutes(app)
 	whatsappCtrl.RegisterRoutes(app)
+	whatsappTemplateCtrl.RegisterRoutes(app)
 
 	// health
 	app.Get("/health", func(c *fiber.Ctx) error {
