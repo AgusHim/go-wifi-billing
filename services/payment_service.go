@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/midtrans/midtrans-go"
 	"github.com/midtrans/midtrans-go/snap"
+	"gorm.io/gorm"
 )
 
 type PaymentService interface {
@@ -244,6 +245,10 @@ func (s *paymentService) RollbackBillAndSubs(bill models.Bill) (*models.Bill, *m
 	// Update subscription duration
 	subs, err := s.subcRepo.FindByID(bill.SubscriptionID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Subscription was deleted/terminated, skip date rollback
+			return &bill, nil, nil
+		}
 		return nil, nil, err
 	}
 
