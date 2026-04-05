@@ -19,6 +19,9 @@ services:
       - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY}
       - WHATSAPP_BOT_URL=${WHATSAPP_BOT_URL}
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
     command: ./main # or `air` if using hot reload
     working_dir: /app
 

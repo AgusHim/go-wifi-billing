@@ -54,5 +54,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Customer{},
 		&models.Complain{},
 		&models.WhatsAppTemplate{},
+		&models.Expense{},
 	)
 }

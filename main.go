@@ -126,6 +126,14 @@ func main() {
 	paymentSvc := services.NewPaymentService(paymentRepo, subscriptionRepo, billRepo, billingProvisioningSvc, renewalSvc)
 	paymentCtrl := controllers.NewPaymentController(paymentSvc)
 
+	expenseRepo := repositories.NewExpenseRepository(gormDB)
+	expenseSvc := services.NewExpenseService(expenseRepo)
+	expenseCtrl := controllers.NewExpenseController(expenseSvc)
+
+	financeRepo := repositories.NewFinanceRepository(gormDB)
+	financeSvc := services.NewFinanceService(financeRepo)
+	financeCtrl := controllers.NewFinanceController(financeSvc)
+
 	// Setup Fiber
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
@@ -157,6 +165,8 @@ func main() {
 		voucherCtrl,
 		whatsappCtrl,
 		waTemplateCtrl,
+		expenseCtrl,
+		financeCtrl,
 	)
 
 	port := os.Getenv("PORT")
