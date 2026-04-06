@@ -31,11 +31,12 @@ func (c *ExpenseController) RegisterRoutes(router fiber.Router) {
 
 func (c *ExpenseController) GetAll(ctx *fiber.Ctx) error {
 	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
+	search := strings.TrimSpace(ctx.Query("search", ""))
 	category := strings.TrimSpace(ctx.Query("category", ""))
 	startAt := strings.TrimSpace(ctx.Query("start_at", ""))
 	endAt := strings.TrimSpace(ctx.Query("end_at", ""))
 
-	data, err := c.service.GetAll(adminID, category, startAt, endAt)
+	data, err := c.service.GetAll(adminID, search, category, startAt, endAt)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "invalid") {
 			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})

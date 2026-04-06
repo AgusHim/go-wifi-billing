@@ -13,7 +13,7 @@ import (
 )
 
 type ExpenseService interface {
-	GetAll(adminID string, category string, startAt string, endAt string) ([]models.Expense, error)
+	GetAll(adminID string, search string, category string, startAt string, endAt string) ([]models.Expense, error)
 	GetByID(id string) (models.Expense, error)
 	Create(input models.Expense, imageFile *multipart.FileHeader) (*models.Expense, error)
 	Update(id string, input models.Expense, imageFile *multipart.FileHeader) (*models.Expense, error)
@@ -28,8 +28,9 @@ func NewExpenseService(repo repositories.ExpenseRepository) ExpenseService {
 	return &expenseService{repo: repo}
 }
 
-func (s *expenseService) GetAll(adminID string, category string, startAt string, endAt string) ([]models.Expense, error) {
+func (s *expenseService) GetAll(adminID string, search string, category string, startAt string, endAt string) ([]models.Expense, error) {
 	adminID = strings.TrimSpace(adminID)
+	search = strings.TrimSpace(search)
 	category = strings.TrimSpace(category)
 	startAt = strings.TrimSpace(startAt)
 	endAt = strings.TrimSpace(endAt)
@@ -48,7 +49,7 @@ func (s *expenseService) GetAll(adminID string, category string, startAt string,
 		return nil, err
 	}
 
-	return s.repo.FindAll(parsedAdminID, category, startDate, endDate)
+	return s.repo.FindAll(parsedAdminID, search, category, startDate, endDate)
 }
 
 func (s *expenseService) GetByID(id string) (models.Expense, error) {

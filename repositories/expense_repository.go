@@ -9,7 +9,7 @@ import (
 )
 
 type ExpenseRepository interface {
-	FindAll(adminID *uuid.UUID, category string, startDate *time.Time, endDate *time.Time) ([]models.Expense, error)
+	FindAll(adminID *uuid.UUID, search string, category string, startDate *time.Time, endDate *time.Time) ([]models.Expense, error)
 	FindByID(id string) (models.Expense, error)
 	Create(expense *models.Expense) error
 	Update(expense *models.Expense) error
@@ -24,12 +24,15 @@ func NewExpenseRepository(db *gorm.DB) ExpenseRepository {
 	return &expenseRepository{db}
 }
 
-func (r *expenseRepository) FindAll(adminID *uuid.UUID, category string, startDate *time.Time, endDate *time.Time) ([]models.Expense, error) {
+func (r *expenseRepository) FindAll(adminID *uuid.UUID, search string, category string, startDate *time.Time, endDate *time.Time) ([]models.Expense, error) {
 	var expenses []models.Expense
 	query := r.db.Preload("Admin")
 
 	if adminID != nil {
 		query = query.Where("admin_id = ?", *adminID)
+	}
+	if search != "" {
+		query = query.Where("LOWER(title) LIKE LOWER(?)", "%"+search+"%")
 	}
 	if category != "" {
 		query = query.Where("LOWER(category) = LOWER(?)", category)
