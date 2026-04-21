@@ -89,4 +89,3 @@ func (s *complainService) Delete(id uuid.UUID) error {
 	}
 	return s.repo.Delete(id)
 }
-

@@ -46,6 +46,12 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 		if err != nil {
 			return nil, fmt.Errorf("failed to restore user: %w", err)
 		}
+
+		// Cegah double-insert customer saat user lama direstore.
+		// Why: soft-delete hanya menyentuh user; customer lama bisa sudah ada atau race dengan request kembar.
+		if existing, _ := s.repo.FindByUserID(user.ID); existing != nil && existing.ID != uuid.Nil {
+			return nil, errors.New("customer already exists for this user")
+		}
 	} else {
 		// Jika belum ada sama sekali → register baru
 		var err error

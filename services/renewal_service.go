@@ -1,10 +1,11 @@
 package services
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/big"
 	"os"
 	"strings"
 	"time"
@@ -239,7 +240,10 @@ func buildRenewalBill(sub models.Subscription, referenceTime time.Time) (*models
 	}
 	uniqueCode := 0
 	if sub.IsActiveUniqueCode {
-		uniqueCode = rand.Intn(799) + 1
+		n, err := rand.Int(rand.Reader, big.NewInt(500))
+		if err == nil {
+			uniqueCode = int(n.Int64()) + 1 // hasil 1–500
+		}
 		amount += uniqueCode
 	}
 

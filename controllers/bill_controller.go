@@ -120,10 +120,15 @@ func (c *BillController) GetByPublicID(ctx *fiber.Ctx) error {
 	})
 }
 func (c *BillController) GetByUserID(ctx *fiber.Ctx) error {
-	userClaims := ctx.Locals("user").(jwt.MapClaims)
-	userID := userClaims["user_id"].(string)
-
-	if userID == "" {
+	userClaims, ok := ctx.Locals("user").(jwt.MapClaims)
+	if !ok {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "Unauthorized",
+		})
+	}
+	userID, ok := userClaims["user_id"].(string)
+	if !ok || userID == "" {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"success": false,
 			"message": "Unauthorized",

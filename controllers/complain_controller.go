@@ -142,4 +142,3 @@ func (c *ComplainController) Delete(ctx *fiber.Ctx) error {
 		"message": "Complain deleted",
 	})
 }
-

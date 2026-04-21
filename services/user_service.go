@@ -14,7 +14,15 @@ import (
 	"github.com/Agushim/go_wifi_billing/repositories"
 )
 
-var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
+var jwtSecret []byte
+
+func init() {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		panic("JWT_SECRET environment variable is required")
+	}
+	jwtSecret = []byte(secret)
+}
 
 type UserService interface {
 	Register(input dto.RegisterDTO) (*models.User, error)

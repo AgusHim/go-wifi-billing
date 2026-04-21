@@ -1,10 +1,11 @@
 package services
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/big"
 	"strings"
 	"time"
 
@@ -182,16 +183,20 @@ func (s *billService) GenerateMonthlyBills() error {
 		}
 
 		amount := sub.Package.Price
-		ppn := int(float64(sub.Package.Price) * 0.11)
+		ppn := 0
 		if sub.IsIncludePPN {
-			amount = int(float64(amount) * 1.11) // tambahkan 11% PPN
+			ppn = int(float64(sub.Package.Price) * 0.11)
+			amount += ppn // tambahkan 11% PPN
 		}
 
-		// ✅ Generate unique code (001–500)
+		// Generate unique code (1–500) menggunakan crypto/rand
 		uniqueCode := 0
 		if sub.IsActiveUniqueCode {
-			uniqueCode = rand.Intn(799) + 1 // hasil 1–500
-			amount += uniqueCode            // tambahkan ke total
+			n, err := rand.Int(rand.Reader, big.NewInt(500))
+			if err == nil {
+				uniqueCode = int(n.Int64()) + 1 // hasil 1–500
+			}
+			amount += uniqueCode // tambahkan ke total
 		}
 
 		bill := &models.Bill{

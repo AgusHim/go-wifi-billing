@@ -15,6 +15,7 @@ type PaymentRepository interface {
 	Update(payment *models.Payment) error
 	Delete(id string) error
 	FindByUserID(userID string) ([]models.Payment, error)
+	FindActiveByBillID(billID uuid.UUID) (*models.Payment, error)
 }
 
 type paymentRepository struct {
@@ -81,6 +82,17 @@ func (r *paymentRepository) Update(payment *models.Payment) error {
 
 func (r *paymentRepository) Delete(id string) error {
 	return r.db.Delete(&models.Payment{}, "id = ?", id).Error
+}
+
+func (r *paymentRepository) FindActiveByBillID(billID uuid.UUID) (*models.Payment, error) {
+	var payment models.Payment
+	err := r.db.
+		Where("bill_id = ? AND LOWER(status) IN ?", billID, []string{"confirmed", "pending"}).
+		First(&payment).Error
+	if err != nil {
+		return nil, err
+	}
+	return &payment, nil
 }
 
 func (r *paymentRepository) FindByUserID(userID string) ([]models.Payment, error) {

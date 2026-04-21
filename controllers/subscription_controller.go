@@ -111,8 +111,14 @@ func (c *SubscriptionController) GetByCustomerID(ctx *fiber.Ctx) error {
 }
 
 func (c *SubscriptionController) GetMySubscription(ctx *fiber.Ctx) error {
-	userClaims := ctx.Locals("user").(jwt.MapClaims)
-	userIDStr := userClaims["user_id"].(string)
+	userClaims, ok := ctx.Locals("user").(jwt.MapClaims)
+	if !ok {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "Unauthorized"})
+	}
+	userIDStr, ok := userClaims["user_id"].(string)
+	if !ok || userIDStr == "" {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "Invalid token"})
+	}
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": "Invalid User ID"})

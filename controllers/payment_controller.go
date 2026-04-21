@@ -206,8 +206,6 @@ func (c *PaymentController) MidtransCallback(ctx *fiber.Ctx) error {
 		})
 	}
 
-	// TODO: update status pembayaran di DB
-	// contoh update order di DB pakai GORM
 	err := c.service.HandleMindtransCallback(payload.OrderID, payload.TransactionStatus)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

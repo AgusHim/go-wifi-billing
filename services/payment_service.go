@@ -100,6 +100,12 @@ func (s *paymentService) Create(input models.Payment) (*models.Payment, error) {
 		return nil, err
 	}
 
+	// Cegah double payment: cek apakah sudah ada payment confirmed/pending untuk bill ini
+	existing, _ := s.repo.FindActiveByBillID(input.BillID)
+	if existing != nil {
+		return nil, fmt.Errorf("bill sudah memiliki payment aktif (status: %s)", existing.Status)
+	}
+
 	input.ID = uuid.New()
 	input.CreatedAt = time.Now()
 	input.UpdatedAt = time.Now()
@@ -235,7 +241,7 @@ func (s *paymentService) handleConfirmation(payment *models.Payment, bill *model
 }
 
 func (s *paymentService) RollbackBillAndSubs(bill models.Bill) (*models.Bill, *models.Subscription, error) {
-	// Update bill status to paid
+	// Rollback bill status to unpaid
 	bill.Status = "unpaid"
 	err := s.billRepo.Update(&bill)
 	if err != nil {
@@ -270,6 +276,12 @@ func (s *paymentService) CreateMidtransTransaction(billID string) (*models.Payme
 		return nil, err
 	}
 
+	// Cegah duplikat: cek apakah sudah ada payment confirmed/pending untuk bill ini
+	existing, _ := s.repo.FindActiveByBillID(bill.ID)
+	if existing != nil {
+		return nil, fmt.Errorf("bill sudah memiliki payment aktif (status: %s)", existing.Status)
+	}
+
 	now := time.Now()
 	var payment models.Payment
 	payment.Bill = bill
@@ -291,10 +303,12 @@ func (s *paymentService) CreateMidtransTransaction(billID string) (*models.Payme
 			OrderID:  payment.ID.String(),
 			GrossAmt: int64(payment.Amount),
 		},
-		CustomerDetail: &midtrans.CustomerDetails{
-			FName: payment.Bill.Customer.User.Name,
-			Email: payment.Bill.Customer.User.Email,
-		},
+	}
+	if bill.Customer.User != nil {
+		req.CustomerDetail = &midtrans.CustomerDetails{
+			FName: bill.Customer.User.Name,
+			Email: bill.Customer.User.Email,
+		}
 	}
 
 	snapResp, nerr := snap.CreateTransaction(req)

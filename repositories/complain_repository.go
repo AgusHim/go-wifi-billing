@@ -62,4 +62,3 @@ func (r *complainRepository) Update(complain *models.Complain) error {
 func (r *complainRepository) Delete(id uuid.UUID) error {
 	return r.db.Delete(&models.Complain{}, "id = ?", id).Error
 }
-
