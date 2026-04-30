@@ -99,12 +99,7 @@ func (r *customerRepository) FindByUserID(userID uuid.UUID) (*models.Customer, e
 }
 
 func (r *customerRepository) Update(customer *models.Customer) error {
-	return r.db.
-		Omit("User").
-		Omit("Coverage").
-		Omit("Odc").
-		Omit("Odp").
-		Save(customer).Error
+	return r.db.Omit("User", "Coverage", "Odc", "Odp", "Admin").Save(customer).Error
 }
 
 func (r *customerRepository) Delete(id uuid.UUID) error {

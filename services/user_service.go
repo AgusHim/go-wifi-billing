@@ -2,11 +2,13 @@ package services
 
 import (
 	"errors"
+	"log"
 	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/Agushim/go_wifi_billing/dto"
@@ -17,6 +19,10 @@ import (
 var jwtSecret []byte
 
 func init() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		panic("JWT_SECRET environment variable is required")

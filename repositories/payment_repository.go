@@ -73,11 +73,11 @@ func (r *paymentRepository) FindByID(id string) (models.Payment, error) {
 }
 
 func (r *paymentRepository) Create(payment *models.Payment) error {
-	return r.db.Create(payment).Error
+	return r.db.Omit("Bill", "Admin").Create(payment).Error
 }
 
 func (r *paymentRepository) Update(payment *models.Payment) error {
-	return r.db.Omit("Bill").Save(payment).Error
+	return r.db.Omit("Bill", "Bill.Customer", "Bill.Subscription", "Admin").Save(payment).Error
 }
 
 func (r *paymentRepository) Delete(id string) error {

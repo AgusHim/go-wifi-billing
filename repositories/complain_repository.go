@@ -56,7 +56,7 @@ func (r *complainRepository) GetAll() ([]models.Complain, error) {
 }
 
 func (r *complainRepository) Update(complain *models.Complain) error {
-	return r.db.Save(complain).Error
+	return r.db.Omit("Customer", "Subscription", "Technician").Save(complain).Error
 }
 
 func (r *complainRepository) Delete(id uuid.UUID) error {

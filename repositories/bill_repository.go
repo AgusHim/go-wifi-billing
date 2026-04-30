@@ -143,7 +143,7 @@ func (r *billRepository) Create(bill *models.Bill) error {
 }
 
 func (r *billRepository) Update(bill *models.Bill) error {
-	return r.db.Omit("Subscription").Save(bill).Error
+	return r.db.Omit("Subscription", "Customer", "Customer.User").Save(bill).Error
 }
 
 func (r *billRepository) Delete(id string) error {
@@ -152,9 +152,11 @@ func (r *billRepository) Delete(id string) error {
 
 func (r *billRepository) FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error) {
 	var bill models.Bill
+	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	endOfMonth := startOfMonth.AddDate(0, 1, 0)
 	err := r.db.
-		Where("customer_id = ? AND EXTRACT(MONTH FROM bill_date) = ? AND EXTRACT(YEAR FROM bill_date) = ?",
-			customerID, month, year).
+		Where("customer_id = ? AND bill_date >= ? AND bill_date < ?",
+			customerID, startOfMonth, endOfMonth).
 		First(&bill).Error
 
 	if err != nil {
@@ -165,9 +167,11 @@ func (r *billRepository) FindBillByCustomerAndMonth(customerID string, month int
 
 func (r *billRepository) FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID, month int, year int) (*models.Bill, error) {
 	var bill models.Bill
+	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	endOfMonth := startOfMonth.AddDate(0, 1, 0)
 	err := r.db.
-		Where("subscription_id = ? AND EXTRACT(MONTH FROM bill_date) = ? AND EXTRACT(YEAR FROM bill_date) = ?",
-			subscriptionID, month, year).
+		Where("subscription_id = ? AND bill_date >= ? AND bill_date < ?",
+			subscriptionID, startOfMonth, endOfMonth).
 		First(&bill).Error
 
 	if err != nil {

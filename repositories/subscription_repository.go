@@ -64,7 +64,7 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 		searchPattern := "%" + search + "%"
 		query = query.Joins("JOIN customers ON customers.id = subscriptions.customer_id").
 			Joins("JOIN users ON users.id = customers.user_id").
-			Where("users.name ILIKE ? OR users.email ILIKE ?", searchPattern, searchPattern)
+			Where("LOWER(users.name) LIKE LOWER(?) OR LOWER(users.email) LIKE LOWER(?)", searchPattern, searchPattern)
 	}
 
 	// Hitung total data (tanpa pagination)
@@ -95,9 +95,10 @@ func (r *subscriptionRepository) FindForBill(customerID *string, status *string,
 		query = query.Where("status = ?", status)
 	}
 	if isEndThisMonth {
-		currentMonth := int(time.Now().Month())
-		currentYear := time.Now().Year()
-		query = query.Where("EXTRACT(MONTH FROM end_date) = ? AND EXTRACT(YEAR FROM end_date) = ?", currentMonth, currentYear)
+		now := time.Now()
+		startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+		endOfMonth := startOfMonth.AddDate(0, 1, 0)
+		query = query.Where("end_date >= ? AND end_date < ?", startOfMonth, endOfMonth)
 	}
 	err := query.
 		Preload("Customer").
@@ -169,7 +170,7 @@ func (r *subscriptionRepository) FindByCustomerID(customerID uuid.UUID) (*models
 }
 
 func (r *subscriptionRepository) Update(subscription *models.Subscription) error {
-	return r.db.Omit("Customer", "Package", "RenewalHistories", "ServiceAccounts").Save(subscription).Error
+	return r.db.Omit("Customer", "Customer.User", "Package", "NetworkPlan", "RenewalHistories", "ServiceAccounts").Save(subscription).Error
 }
 
 func (r *subscriptionRepository) Delete(id uuid.UUID) error {

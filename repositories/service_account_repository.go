@@ -70,7 +70,7 @@ func (r *serviceAccountRepository) FindByID(id uuid.UUID) (*models.ServiceAccoun
 }
 
 func (r *serviceAccountRepository) Update(account *models.ServiceAccount) error {
-	return r.db.Save(account).Error
+	return r.db.Omit("Router", "Subscription", "NetworkPlan").Save(account).Error
 }
 
 func (r *serviceAccountRepository) Delete(id uuid.UUID) error {
