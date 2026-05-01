@@ -19,7 +19,7 @@ import (
 )
 
 type PaymentService interface {
-	GetAll(adminID string, search string, status string, startAt string, endAt string) ([]models.Payment, error)
+	GetAll(adminID string, search string, status string, startAt string, endAt string, page int, limit int) ([]models.Payment, int64, error)
 	GetByID(id string) (models.Payment, error)
 	Create(input models.Payment) (*models.Payment, error)
 	Update(id string, input models.Payment) (*models.Payment, error)
@@ -63,7 +63,7 @@ func NewPaymentService(
 	}
 }
 
-func (s *paymentService) GetAll(adminID string, search string, status string, startAt string, endAt string) ([]models.Payment, error) {
+func (s *paymentService) GetAll(adminID string, search string, status string, startAt string, endAt string, page int, limit int) ([]models.Payment, int64, error) {
 	adminID = strings.TrimSpace(adminID)
 	search = strings.TrimSpace(search)
 	status = strings.TrimSpace(status)
@@ -74,17 +74,17 @@ func (s *paymentService) GetAll(adminID string, search string, status string, st
 	if adminID != "" {
 		uid, err := uuid.Parse(adminID)
 		if err != nil {
-			return nil, errors.New("invalid admin_id")
+			return nil, 0, errors.New("invalid admin_id")
 		}
 		parsedAdminID = &uid
 	}
 
 	startDate, endDate, err := parseStartEndRange(startAt, endAt)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return s.repo.FindAll(parsedAdminID, search, status, startDate, endDate)
+	return s.repo.FindAll(parsedAdminID, search, status, startDate, endDate, page, limit)
 }
 
 func (s *paymentService) GetByID(id string) (models.Payment, error) {
@@ -366,7 +366,7 @@ func getStatus(status string) string {
 }
 
 func (s *paymentService) ExportCSV(adminID string, search string, status string, startAt string, endAt string) ([]byte, error) {
-	payments, err := s.GetAll(adminID, search, status, startAt, endAt)
+	payments, _, err := s.GetAll(adminID, search, status, startAt, endAt, 0, 0)
 	if err != nil {
 		return nil, err
 	}

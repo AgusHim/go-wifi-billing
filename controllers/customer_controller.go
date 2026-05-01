@@ -55,6 +55,7 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 	limitStr := ctx.Query("limit", "10")
 	search := ctx.Query("search", "")
 	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
+	coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
@@ -66,9 +67,10 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 		}
 	}
 
-	customers, total, err := c.service.GetAll(page, limit, search, adminID)
+	customers, total, err := c.service.GetAll(page, limit, search, adminID, coverageID)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "invalid admin_id") {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "invalid admin_id") || strings.Contains(msg, "invalid coverage_id") {
 			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
@@ -161,6 +163,7 @@ func (c *CustomerController) Delete(ctx *fiber.Ctx) error {
 func (c *CustomerController) ExportCSV(ctx *fiber.Ctx) error {
 	search := ctx.Query("search", "")
 	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
+	coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
 
 	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
 		role, _ := userClaims["role"].(string)
@@ -170,7 +173,7 @@ func (c *CustomerController) ExportCSV(ctx *fiber.Ctx) error {
 		}
 	}
 
-	customers, _, err := c.service.GetAll(1, 100000, search, adminID)
+	customers, _, err := c.service.GetAll(1, 100000, search, adminID, coverageID)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

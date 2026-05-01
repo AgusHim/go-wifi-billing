@@ -11,7 +11,7 @@ import (
 
 type CustomerRepository interface {
 	Create(customer *models.Customer) error
-	FindAll(page, limit int, search string, adminID *uuid.UUID) ([]models.Customer, int64, error)
+	FindAll(page, limit int, search string, adminID *uuid.UUID, coverageID *uuid.UUID) ([]models.Customer, int64, error)
 	FindByID(id uuid.UUID) (*models.Customer, error)
 	FindByUserID(userID uuid.UUID) (*models.Customer, error)
 	Update(customer *models.Customer) error
@@ -30,7 +30,7 @@ func (r *customerRepository) Create(customer *models.Customer) error {
 	return r.db.Create(customer).Error
 }
 
-func (r *customerRepository) FindAll(page, limit int, search string, adminID *uuid.UUID) ([]models.Customer, int64, error) {
+func (r *customerRepository) FindAll(page, limit int, search string, adminID *uuid.UUID, coverageID *uuid.UUID) ([]models.Customer, int64, error) {
 	var customers []models.Customer
 	var total int64
 
@@ -49,6 +49,9 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 	}
 	if adminID != nil {
 		query = query.Where("customers.admin_id = ?", *adminID)
+	}
+	if coverageID != nil {
+		query = query.Where("customers.coverage_id = ?", *coverageID)
 	}
 
 	// Hitung total data

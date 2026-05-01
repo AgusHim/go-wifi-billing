@@ -9,7 +9,7 @@ import (
 )
 
 type PaymentRepository interface {
-	FindAll(adminID *uuid.UUID, search string, status string, startDate *time.Time, endDate *time.Time) ([]models.Payment, error)
+	FindAll(adminID *uuid.UUID, search string, status string, startDate *time.Time, endDate *time.Time, page int, limit int) ([]models.Payment, int64, error)
 	FindByID(id string) (models.Payment, error)
 	Create(payment *models.Payment) error
 	Update(payment *models.Payment) error
@@ -26,17 +26,14 @@ func NewPaymentRepository(db *gorm.DB) PaymentRepository {
 	return &paymentRepository{db}
 }
 
-func (r *paymentRepository) FindAll(adminID *uuid.UUID, search string, status string, startDate *time.Time, endDate *time.Time) ([]models.Payment, error) {
+func (r *paymentRepository) FindAll(adminID *uuid.UUID, search string, status string, startDate *time.Time, endDate *time.Time, page int, limit int) ([]models.Payment, int64, error) {
 	var payments []models.Payment
-	query := r.db.
-		Preload("Bill").
-		Preload("Bill.Customer.User").
-		Preload("Bill.Subscription").
-		Preload("Bill.Subscription.Package").
-		Preload("Admin")
+	var total int64
+
+	base := r.db.Model(&models.Payment{})
 
 	if search != "" {
-		query = query.
+		base = base.
 			Joins("JOIN bills ON payments.bill_id = bills.id").
 			Joins("JOIN customers ON bills.customer_id = customers.id").
 			Joins("JOIN users ON customers.user_id = users.id").
@@ -44,20 +41,43 @@ func (r *paymentRepository) FindAll(adminID *uuid.UUID, search string, status st
 	}
 
 	if adminID != nil {
-		query = query.Where("payments.admin_id = ?", *adminID)
+		base = base.Where("payments.admin_id = ?", *adminID)
 	}
 	if status != "" {
-		query = query.Where("LOWER(payments.status) = LOWER(?)", status)
+		base = base.Where("LOWER(payments.status) = LOWER(?)", status)
 	}
 	if startDate != nil {
-		query = query.Where("payments.payment_date >= ?", *startDate)
+		base = base.Where("payments.payment_date >= ?", *startDate)
 	}
 	if endDate != nil {
-		query = query.Where("payments.payment_date < ?", *endDate)
+		base = base.Where("payments.payment_date < ?", *endDate)
 	}
 
-	err := query.Order("payments.payment_date DESC").Find(&payments).Error
-	return payments, err
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	query := base.Session(&gorm.Session{}).
+		Preload("Bill").
+		Preload("Bill.Customer").
+		Preload("Bill.Customer.User").
+		Preload("Bill.Subscription").
+		Preload("Bill.Subscription.Package").
+		Preload("Admin").
+		Order("payments.payment_date DESC")
+
+	if limit > 0 {
+		if page < 1 {
+			page = 1
+		}
+		offset := (page - 1) * limit
+		query = query.Limit(limit).Offset(offset)
+	}
+
+	if err := query.Find(&payments).Error; err != nil {
+		return nil, 0, err
+	}
+	return payments, total, nil
 }
 
 func (r *paymentRepository) FindByID(id string) (models.Payment, error) {

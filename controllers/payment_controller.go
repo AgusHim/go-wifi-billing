@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +47,15 @@ func (c *PaymentController) GetAll(ctx *fiber.Ctx) error {
 	startAt := strings.TrimSpace(ctx.Query("start_at", ""))
 	endAt := strings.TrimSpace(ctx.Query("end_at", ""))
 
+	page, _ := strconv.Atoi(ctx.Query("page", "1"))
+	limit, _ := strconv.Atoi(ctx.Query("limit", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+
 	// Loket can only see their own payments regardless of query.
 	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
 		role, _ := userClaims["role"].(string)
@@ -55,7 +65,7 @@ func (c *PaymentController) GetAll(ctx *fiber.Ctx) error {
 		}
 	}
 
-	data, err := c.service.GetAll(adminID, search, status, startAt, endAt)
+	data, total, err := c.service.GetAll(adminID, search, status, startAt, endAt, page, limit)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "invalid admin_id") ||
 			strings.Contains(strings.ToLower(err.Error()), "invalid start_at format") ||
@@ -65,7 +75,19 @@ func (c *PaymentController) GetAll(ctx *fiber.Ctx) error {
 		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
-	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Success get all payments"})
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"meta": fiber.Map{
+			"pagination": fiber.Map{
+				"page":        page,
+				"limit":       limit,
+				"total_items": total,
+				"total_pages": int((total + int64(limit) - 1) / int64(limit)),
+			},
+		},
+		"data":    data,
+		"message": "Success get all payments",
+	})
 }
 
 func (c *PaymentController) ExportCSV(ctx *fiber.Ctx) error {
