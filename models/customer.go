@@ -34,11 +34,12 @@ type Customer struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 
 	// Relationships (optional preload)
-	User     *User     `json:"user" gorm:"foreignKey:UserID"`
-	Coverage *Coverage `json:"coverage" gorm:"foreignKey:CoverageID"`
-	Odc      *Odc      `json:"odc" gorm:"foreignKey:OdcID"`
-	Odp      *Odp      `json:"odp" gorm:"foreignKey:OdpID"`
-	Admin    *User     `json:"admin" gorm:"foreignKey:AdminID"`
+	User          *User          `json:"user" gorm:"foreignKey:UserID"`
+	Coverage      *Coverage      `json:"coverage" gorm:"foreignKey:CoverageID"`
+	Odc           *Odc           `json:"odc" gorm:"foreignKey:OdcID"`
+	Odp           *Odp           `json:"odp" gorm:"foreignKey:OdpID"`
+	Admin         *User          `json:"admin" gorm:"foreignKey:AdminID"`
+	Subscriptions []Subscription `json:"subscriptions,omitempty" gorm:"foreignKey:CustomerID"`
 }
 
 func (c *Customer) BeforeCreate(tx *gorm.DB) (err error) {

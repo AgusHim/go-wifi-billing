@@ -44,6 +44,10 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 		Preload("Coverage").
 		Preload("Odc").
 		Preload("Odp").
+		Preload("Subscriptions", func(tx *gorm.DB) *gorm.DB {
+			return tx.Order("subscriptions.created_at DESC")
+		}).
+		Preload("Subscriptions.Package").
 		Joins("LEFT JOIN users ON users.id = customers.user_id")
 
 	// Pencarian di User.Name atau User.Email
