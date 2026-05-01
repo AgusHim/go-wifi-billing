@@ -200,20 +200,30 @@ func (s *paymentService) UpdateBillAndSubs(input models.Payment, bill models.Bil
 		return nil, nil, err
 	}
 
-	// Update subscription duration
+	// Update subscription duration:
+	// StartDate = tanggal 1 bulan berikutnya, EndDate = tanggal terakhir bulan berikutnya.
 	subs, err := s.subcRepo.FindByID(bill.SubscriptionID)
 	if err != nil {
 		return nil, nil, err
 	}
-	endSubs := subs.EndDate
-	subs.StartDate = endSubs
-	subs.EndDate = endSubs.AddDate(0, 1, 0)
+	startNext, endNext := nextMonthRange(time.Now())
+	subs.StartDate = startNext
+	subs.EndDate = endNext
 
 	err = s.subcRepo.Update(subs)
 	if err != nil {
 		return nil, nil, err
 	}
 	return &bill, subs, nil
+}
+
+// nextMonthRange mengembalikan tanggal 1 bulan berikutnya dan tanggal terakhir
+// bulan berikutnya berdasarkan waktu referensi `ref`.
+func nextMonthRange(ref time.Time) (time.Time, time.Time) {
+	y, m, _ := ref.Date()
+	start := time.Date(y, m+1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, -1)
+	return start, end
 }
 
 func (s *paymentService) handleConfirmation(payment *models.Payment, bill *models.Bill) (*models.Bill, *models.Subscription, error) {

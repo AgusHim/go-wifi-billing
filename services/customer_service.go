@@ -93,6 +93,12 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 		description = *body.Description
 	}
 
+	// Auto-generate service number unik per coverage; input dari client diabaikan.
+	serviceNumber, err := s.repo.NextServiceNumber(coverageID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate service_number: %w", err)
+	}
+
 	// Buat customer baru
 	customer := &models.Customer{
 		ID:            uuid.New(),
@@ -102,7 +108,7 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 		OdcID:         odcID,
 		OdpID:         odpID,
 		PortOdp:       portOdp,
-		ServiceNumber: *body.ServiceNumber,
+		ServiceNumber: serviceNumber,
 		Card:          *body.Card,
 		IDCard:        *body.IDCard,
 		IsSendWa:      *body.IsSendWA,
@@ -189,7 +195,7 @@ func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*m
 	if input.PortOdp != nil {
 		existing.PortOdp = *input.PortOdp
 	}
-	existing.ServiceNumber = *input.ServiceNumber
+	// service_number dikunci; selalu auto-generated dan tidak boleh ditimpa via API.
 	existing.Card = *input.Card
 	existing.IDCard = *input.IDCard
 	existing.IsSendWa = *input.IsSendWA
