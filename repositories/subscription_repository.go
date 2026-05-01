@@ -101,7 +101,7 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 	if err := query.
 		Limit(limit).
 		Offset(offset).
-		Order("created_at DESC").
+		Order("subscriptions.created_at DESC").
 		Find(&subscriptions).Error; err != nil {
 		return nil, 0, err
 	}
