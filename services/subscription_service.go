@@ -11,11 +11,12 @@ import (
 
 type SubscriptionService interface {
 	Create(subscription *models.Subscription) error
-	GetAll(page int, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error)
+	GetAll(page int, limit int, search string, customerID *string, status *string, customerDeleted *string) ([]models.Subscription, int64, error)
 	GetByID(id uuid.UUID) (*models.Subscription, error)
 	FindByCustomerID(customerID string) ([]models.Subscription, error)
 	Update(id uuid.UUID, input *models.Subscription) (*models.Subscription, error)
 	Delete(id uuid.UUID) error
+	DeleteByCustomerID(customerID uuid.UUID) error
 }
 
 type subscriptionService struct {
@@ -47,8 +48,8 @@ func (s *subscriptionService) Create(subscription *models.Subscription) error {
 	return s.repo.Create(subscription)
 }
 
-func (s *subscriptionService) GetAll(page int, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error) {
-	items, total, err := s.repo.FindAll(page, limit, search, customerID, status)
+func (s *subscriptionService) GetAll(page int, limit int, search string, customerID *string, status *string, customerDeleted *string) ([]models.Subscription, int64, error) {
+	items, total, err := s.repo.FindAll(page, limit, search, customerID, status, customerDeleted)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -67,7 +68,7 @@ func (s *subscriptionService) GetByID(id uuid.UUID) (*models.Subscription, error
 }
 func (s *subscriptionService) FindByCustomerID(customerID string) ([]models.Subscription, error) {
 	customerIDPtr := &customerID
-	subs, _, err := s.repo.FindAll(1, 9999, "", customerIDPtr, nil)
+	subs, _, err := s.repo.FindAll(1, 9999, "", customerIDPtr, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +122,10 @@ func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) (
 
 func (s *subscriptionService) Delete(id uuid.UUID) error {
 	return s.repo.Delete(id)
+}
+
+func (s *subscriptionService) DeleteByCustomerID(customerID uuid.UUID) error {
+	return s.repo.SoftDeleteByCustomerID(customerID)
 }
 
 func sanitizeSubscription(input *models.Subscription) *models.Subscription {

@@ -232,6 +232,13 @@ func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*m
 }
 
 func (s *customerService) Delete(id uuid.UUID) error {
+	// Cascade soft-delete subscription milik customer ini supaya:
+	// - subscription tidak muncul lagi di list (data referensial customer sudah hilang)
+	// - cron GenerateMonthlyBills otomatis skip (default scope GORM exclude soft-deleted)
+	// Bills/payments tetap utuh karena sudah punya snapshot sendiri.
+	if err := s.subscriptionService.DeleteByCustomerID(id); err != nil {
+		return fmt.Errorf("failed to soft-delete subscriptions: %w", err)
+	}
 	return s.repo.Delete(id)
 }
 

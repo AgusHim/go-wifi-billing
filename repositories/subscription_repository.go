@@ -10,13 +10,14 @@ import (
 
 type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
-	FindAll(page, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error)
+	FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string) ([]models.Subscription, int64, error)
 	FindForBill(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
 	FindAutoRenewCandidates(threshold time.Time, renewalMode string) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
 	FindByCustomerID(customerID uuid.UUID) (*models.Subscription, error)
 	Update(subscription *models.Subscription) error
 	Delete(id uuid.UUID) error
+	SoftDeleteByCustomerID(customerID uuid.UUID) error
 }
 
 type subscriptionRepository struct {
@@ -31,15 +32,28 @@ func (r *subscriptionRepository) Create(subscription *models.Subscription) error
 	return r.db.Create(subscription).Error
 }
 
-func (r *subscriptionRepository) FindAll(page, limit int, search string, customerID *string, status *string) ([]models.Subscription, int64, error) {
+func (r *subscriptionRepository) FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string) ([]models.Subscription, int64, error) {
 	var (
 		subscriptions []models.Subscription
 		total         int64
 	)
+	includeDeletedCustomer := customerDeleted != nil && *customerDeleted == "only"
+	excludeDeletedCustomer := customerDeleted != nil && *customerDeleted == "exclude"
 
 	query := r.db.Model(&models.Subscription{}).
-		Preload("Customer").
-		Preload("Customer.User").
+		Preload("Customer", func(tx *gorm.DB) *gorm.DB {
+			if includeDeletedCustomer {
+				return tx.Unscoped()
+			}
+			return tx
+		}).
+		Preload("Customer.User", func(tx *gorm.DB) *gorm.DB {
+			if includeDeletedCustomer {
+				return tx.Unscoped()
+			}
+			return tx
+		}).
+		Preload("Customer.Coverage").
 		Preload("Package").
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
@@ -48,6 +62,16 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 		Preload("RenewalHistories").
 		Preload("RenewalHistories.Bill").
 		Preload("RenewalHistories.Payment")
+
+	if includeDeletedCustomer {
+		query = query.Unscoped().
+			Joins("JOIN customers AS deleted_customers ON deleted_customers.id = subscriptions.customer_id").
+			Where("deleted_customers.deleted_at IS NOT NULL")
+	}
+	if excludeDeletedCustomer {
+		query = query.Joins("JOIN customers AS active_customers ON active_customers.id = subscriptions.customer_id").
+			Where("active_customers.deleted_at IS NULL")
+	}
 
 	// Filter by CustomerID
 	if customerID != nil && *customerID != "" {
@@ -103,6 +127,7 @@ func (r *subscriptionRepository) FindForBill(customerID *string, status *string,
 	err := query.
 		Preload("Customer").
 		Preload("Customer.User").
+		Preload("Customer.Coverage").
 		Preload("Package").
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
@@ -134,6 +159,7 @@ func (r *subscriptionRepository) FindByID(id uuid.UUID) (*models.Subscription, e
 	err := r.db.
 		Preload("Customer").
 		Preload("Customer.User").
+		Preload("Customer.Coverage").
 		Preload("Package").
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
@@ -151,6 +177,7 @@ func (r *subscriptionRepository) FindByCustomerID(customerID uuid.UUID) (*models
 	err := r.db.
 		Preload("Customer").
 		Preload("Customer.User").
+		Preload("Customer.Coverage").
 		Preload("Package").
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
@@ -175,4 +202,8 @@ func (r *subscriptionRepository) Update(subscription *models.Subscription) error
 
 func (r *subscriptionRepository) Delete(id uuid.UUID) error {
 	return r.db.Delete(&models.Subscription{}, "id = ?", id).Error
+}
+
+func (r *subscriptionRepository) SoftDeleteByCustomerID(customerID uuid.UUID) error {
+	return r.db.Where("customer_id = ?", customerID).Delete(&models.Subscription{}).Error
 }

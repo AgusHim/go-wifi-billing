@@ -39,7 +39,7 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 	var total int64
 
 	query := r.db.Model(&models.Customer{}).
-		Preload("User").
+		Preload("User", func(tx *gorm.DB) *gorm.DB { return tx.Unscoped() }).
 		Preload("Admin").
 		Preload("Coverage").
 		Preload("Odc").
@@ -83,7 +83,7 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 func (r *customerRepository) FindByID(id uuid.UUID) (*models.Customer, error) {
 	var customer models.Customer
 	err := r.db.
-		Preload("User").
+		Preload("User", func(tx *gorm.DB) *gorm.DB { return tx.Unscoped() }).
 		Preload("Coverage").
 		Preload("Odc").
 		Preload("Odp").
@@ -95,7 +95,7 @@ func (r *customerRepository) FindByUserID(userID uuid.UUID) (*models.Customer, e
 	var customer models.Customer
 
 	err := r.db.
-		Preload("User").
+		Preload("User", func(tx *gorm.DB) *gorm.DB { return tx.Unscoped() }).
 		Preload("Admin").
 		Preload("Coverage").
 		Preload("Odc").

@@ -60,10 +60,11 @@ func (c *SubscriptionController) GetAll(ctx *fiber.Ctx) error {
 	pageStr := ctx.Query("page", "1")
 	limitStr := ctx.Query("limit", "10")
 	search := ctx.Query("search", "")
+	customerDeleted := ctx.Query("customer_deleted", "")
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
-	subscriptions, total, err := c.service.GetAll(page, limit, search, &customerID, &status)
+	subscriptions, total, err := c.service.GetAll(page, limit, search, &customerID, &status, &customerDeleted)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

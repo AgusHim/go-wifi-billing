@@ -109,6 +109,7 @@ func (s *paymentService) Create(input models.Payment) (*models.Payment, error) {
 	input.ID = uuid.New()
 	input.CreatedAt = time.Now()
 	input.UpdatedAt = time.Now()
+	applyPaymentSnapshot(&input, &bill)
 	err = s.repo.Create(&input)
 	if err != nil {
 		return nil, err
@@ -215,6 +216,67 @@ func (s *paymentService) UpdateBillAndSubs(input models.Payment, bill models.Bil
 		return nil, nil, err
 	}
 	return &bill, subs, nil
+}
+
+// applyPaymentSnapshot menyalin info customer + bill ke payment agar tetap utuh
+// walaupun bill/customer/user nantinya terhapus.
+func applyPaymentSnapshot(payment *models.Payment, bill *models.Bill) {
+	if bill == nil {
+		return
+	}
+	if payment.BillPublicID == "" {
+		payment.BillPublicID = bill.PublicID
+	}
+	if payment.BillAmount == 0 {
+		payment.BillAmount = bill.Amount
+	}
+	if payment.BillPPN == 0 {
+		payment.BillPPN = bill.PPN
+	}
+	if payment.BillUniqueCode == 0 {
+		payment.BillUniqueCode = bill.UniqueCode
+	}
+	if payment.BillDate == nil && !bill.BillDate.IsZero() {
+		bd := bill.BillDate
+		payment.BillDate = &bd
+	}
+	if payment.BillDueDate == nil && !bill.DueDate.IsZero() {
+		dd := bill.DueDate
+		payment.BillDueDate = &dd
+	}
+	if payment.PackageName == "" {
+		payment.PackageName = bill.PackageName
+	}
+	if payment.CustomerName == "" {
+		payment.CustomerName = bill.CustomerName
+	}
+	if payment.CustomerPhone == "" {
+		payment.CustomerPhone = bill.CustomerPhone
+	}
+	if payment.CustomerEmail == "" {
+		payment.CustomerEmail = bill.CustomerEmail
+	}
+	if payment.CustomerAddress == "" {
+		payment.CustomerAddress = bill.CustomerAddress
+	}
+	// Fallback bila bill belum di-backfill snapshot-nya.
+	if payment.PackageName == "" && bill.Subscription.Package != nil {
+		payment.PackageName = bill.Subscription.Package.Name
+	}
+	if bill.Customer.User != nil {
+		if payment.CustomerName == "" {
+			payment.CustomerName = bill.Customer.User.Name
+		}
+		if payment.CustomerPhone == "" {
+			payment.CustomerPhone = bill.Customer.User.Phone
+		}
+		if payment.CustomerEmail == "" {
+			payment.CustomerEmail = bill.Customer.User.Email
+		}
+	}
+	if payment.CustomerAddress == "" {
+		payment.CustomerAddress = bill.Customer.Address
+	}
 }
 
 // nextMonthRange mengembalikan tanggal 1 bulan berikutnya dan tanggal terakhir
@@ -328,6 +390,7 @@ func (s *paymentService) CreateMidtransTransaction(billID string) (*models.Payme
 	}
 	payment.RefID = snapResp.Token
 	payment.PaymentUrl = &snapResp.RedirectURL
+	applyPaymentSnapshot(&payment, &bill)
 
 	err = s.repo.Create(&payment)
 	if err != nil {

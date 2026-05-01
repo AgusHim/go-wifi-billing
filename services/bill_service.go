@@ -102,8 +102,55 @@ func (s *billService) Create(input models.Bill) (models.Bill, error) {
 	input.ID = uuid.New()
 	input.CreatedAt = time.Now()
 	input.UpdatedAt = time.Now()
+
+	// Snapshot data customer/package saat bill dibuat agar tetap utuh kalau
+	// nantinya customer/user/package terhapus.
+	if sub, err := s.subRepo.FindByID(input.SubscriptionID); err == nil && sub != nil {
+		applyBillSnapshot(&input, sub)
+	}
+
 	err := s.repo.Create(&input)
 	return input, err
+}
+
+// applyBillSnapshot mengisi field snapshot di bill dari subscription + customer + package + coverage.
+// Aman dipanggil walau sebagian data nil; field yang sudah berisi tidak ditimpa kosong.
+func applyBillSnapshot(bill *models.Bill, sub *models.Subscription) {
+	if sub == nil {
+		return
+	}
+	if sub.Package != nil {
+		if bill.PackageName == "" {
+			bill.PackageName = sub.Package.Name
+		}
+		if bill.PackagePrice == 0 {
+			bill.PackagePrice = sub.Package.Price
+		}
+	}
+	cust := sub.Customer
+	if cust == nil {
+		return
+	}
+	if bill.CustomerServiceNumber == "" {
+		bill.CustomerServiceNumber = cust.ServiceNumber
+	}
+	if bill.CustomerAddress == "" {
+		bill.CustomerAddress = cust.Address
+	}
+	if cust.Coverage != nil && bill.CoverageName == "" {
+		bill.CoverageName = cust.Coverage.Name
+	}
+	if cust.User != nil {
+		if bill.CustomerName == "" {
+			bill.CustomerName = cust.User.Name
+		}
+		if bill.CustomerPhone == "" {
+			bill.CustomerPhone = cust.User.Phone
+		}
+		if bill.CustomerEmail == "" {
+			bill.CustomerEmail = cust.User.Email
+		}
+	}
 }
 func (s *billService) GetByPublicID(publicID string) (*models.Bill, error) {
 	bill, err := s.repo.FindByPublicID(publicID)
@@ -213,6 +260,7 @@ func (s *billService) GenerateMonthlyBills() error {
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		}
+		applyBillSnapshot(bill, &sub)
 
 		log.Printf("Creating bill %s for customer %s: %v", bill.PublicID, sub.CustomerID.String(), bill)
 
