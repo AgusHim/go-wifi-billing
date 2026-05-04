@@ -80,10 +80,10 @@ func (r *billRepository) FindAllPaginated(
 		query = query.Where("LOWER(bills.status) = LOWER(?)", status)
 	}
 	if startDate != nil {
-		query = query.Where("bills.bill_date >= ?", *startDate)
+		query = query.Where("bills.due_date >= ?", *startDate)
 	}
 	if endDate != nil {
-		query = query.Where("bills.bill_date < ?", *endDate)
+		query = query.Where("bills.due_date < ?", *endDate)
 	}
 
 	// Count total records
