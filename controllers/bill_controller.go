@@ -48,9 +48,22 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 	status := strings.TrimSpace(ctx.Query("status", ""))
 	startAt := strings.TrimSpace(ctx.Query("start_at", ""))
 	endAt := strings.TrimSpace(ctx.Query("end_at", ""))
-	coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
+
+	// Parse coverage_ids
+	var coverageIDs []string
+	if err := ctx.QueryParser(&struct {
+		CoverageIds []string `query:"coverage_ids"`
+	}{CoverageIds: coverageIDs}); err != nil {
+		coverageIDs = nil
+	}
+
+	// Fallback to coverage_id (single) if coverage_ids is empty
+	coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
+	if len(coverageIDs) == 0 && coverageID != "" {
+		coverageIDs = []string{coverageID}
+	}
 
 	// If endpoint is accessed with authenticated non-admin user, force filter to own user ID.
 	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
@@ -61,7 +74,7 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 		}
 	}
 
-	data, total, err := c.service.GetAll(page, limit, search, adminID, status, startAt, endAt, coverageID)
+	data, total, err := c.service.GetAll(page, limit, search, adminID, status, startAt, endAt, coverageIDs)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "invalid admin_id") ||
 			strings.Contains(strings.ToLower(err.Error()), "invalid status") ||
