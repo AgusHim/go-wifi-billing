@@ -51,18 +51,27 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
-	// Parse coverage_ids
+	// Parse coverage_ids (both coverage_ids and coverage_ids[] formats) manually
 	var coverageIDs []string
-	if err := ctx.QueryParser(&struct {
-		CoverageIds []string `query:"coverage_ids"`
-	}{CoverageIds: coverageIDs}); err != nil {
-		coverageIDs = nil
-	}
 
-	// Fallback to coverage_id (single) if coverage_ids is empty
-	coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
-	if len(coverageIDs) == 0 && coverageID != "" {
-		coverageIDs = []string{coverageID}
+	// Get all query args
+	ctx.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		k := string(key)
+		v := string(value)
+		// Check for both coverage_ids and coverage_ids[]
+		if k == "coverage_ids" || k == "coverage_ids[]" {
+			if v != "" {
+				coverageIDs = append(coverageIDs, strings.TrimSpace(v))
+			}
+		}
+	})
+
+	// Fallback to single coverage_id if no array found
+	if len(coverageIDs) == 0 {
+		coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
+		if coverageID != "" {
+			coverageIDs = []string{coverageID}
+		}
 	}
 
 	// If endpoint is accessed with authenticated non-admin user, force filter to own user ID.
