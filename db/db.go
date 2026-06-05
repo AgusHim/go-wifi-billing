@@ -55,5 +55,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Complain{},
 		&models.WhatsAppTemplate{},
 		&models.Expense{},
+		&models.Setting{},
 	)
 }

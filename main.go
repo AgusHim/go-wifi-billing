@@ -134,6 +134,10 @@ func main() {
 	financeSvc := services.NewFinanceService(financeRepo)
 	financeCtrl := controllers.NewFinanceController(financeSvc)
 
+	settingRepo := repositories.NewSettingRepository(gormDB)
+	settingSvc := services.NewSettingService(settingRepo)
+	settingCtrl := controllers.NewSettingController(settingSvc)
+
 	// Setup Fiber
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
@@ -167,6 +171,7 @@ func main() {
 		waTemplateCtrl,
 		expenseCtrl,
 		financeCtrl,
+		settingCtrl,
 	)
 
 	port := os.Getenv("PORT")

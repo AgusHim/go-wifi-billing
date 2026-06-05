@@ -27,6 +27,7 @@ func Setup(
 	whatsappTemplateCtrl *controllers.WhatsAppTemplateController,
 	expenseCtrl *controllers.ExpenseController,
 	financeCtrl *controllers.FinanceController,
+	settingCtrl *controllers.SettingController,
 ) {
 
 	coverageCtrl.RegisterRoutes(app)
@@ -49,6 +50,7 @@ func Setup(
 	whatsappTemplateCtrl.RegisterRoutes(app)
 	expenseCtrl.RegisterRoutes(app)
 	financeCtrl.RegisterRoutes(app)
+	settingCtrl.RegisterRoutes(app)
 
 	// health
 	app.Get("/health", func(c *fiber.Ctx) error {
