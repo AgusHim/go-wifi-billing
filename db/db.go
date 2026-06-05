@@ -24,6 +24,13 @@ func InitDB(postgresDsn string) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	// Enable UUID extension for PostgreSQL
+	if postgresDsn != "" {
+		if err := db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").Error; err != nil {
+			return nil, err
+		}
+	}
+
 	return db, nil
 }
 
