@@ -56,6 +56,15 @@ func (c *PaymentController) GetAll(ctx *fiber.Ctx) error {
 		limit = 20
 	}
 
+	// Check if user is root, if yes, get all data without pagination
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "root" {
+			limit = 999999
+			page = 1
+		}
+	}
+
 	// Loket can only see their own payments regardless of query.
 	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
 		role, _ := userClaims["role"].(string)

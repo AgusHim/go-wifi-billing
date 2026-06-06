@@ -101,6 +101,15 @@ func (ctrl *UserController) GetAll(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
+	// Check if user is root, if yes, get all data without pagination
+	if userClaims, ok := c.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "root" {
+			limit = 999999
+			page = 1
+		}
+	}
+
 	var roles []string
 	if roleParam != "" {
 		for _, r := range strings.Split(roleParam, ",") {

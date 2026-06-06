@@ -14,7 +14,7 @@ import (
 
 type CustomerService interface {
 	Create(customer *dto.CreateCustomerDTO) (*models.Customer, error)
-	GetAll(page, limit int, search string, adminID string, coverageID string) ([]models.Customer, int64, error)
+	GetAll(page, limit int, search string, adminID string, coverageIDs []string) ([]models.Customer, int64, error)
 	GetByID(id uuid.UUID) (*models.Customer, error)
 	FindByUserID(userID uuid.UUID) (*models.Customer, error)
 	Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*models.Customer, error)
@@ -134,9 +134,8 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 	return customer, nil
 }
 
-func (s *customerService) GetAll(page, limit int, search string, adminID string, coverageID string) ([]models.Customer, int64, error) {
+func (s *customerService) GetAll(page, limit int, search string, adminID string, coverageIDs []string) ([]models.Customer, int64, error) {
 	adminID = strings.TrimSpace(adminID)
-	coverageID = strings.TrimSpace(coverageID)
 
 	var parsedAdminID *uuid.UUID
 	if adminID != "" {
@@ -147,16 +146,18 @@ func (s *customerService) GetAll(page, limit int, search string, adminID string,
 		parsedAdminID = &uid
 	}
 
-	var parsedCoverageID *uuid.UUID
-	if coverageID != "" {
-		cid, err := uuid.Parse(coverageID)
-		if err != nil {
-			return nil, 0, errors.New("invalid coverage_id")
+	var parsedCoverageIDs []uuid.UUID
+	for _, cid := range coverageIDs {
+		cid = strings.TrimSpace(cid)
+		if cid != "" {
+			uid, err := uuid.Parse(cid)
+			if err == nil {
+				parsedCoverageIDs = append(parsedCoverageIDs, uid)
+			}
 		}
-		parsedCoverageID = &cid
 	}
 
-	return s.repo.FindAll(page, limit, search, parsedAdminID, parsedCoverageID)
+	return s.repo.FindAll(page, limit, search, parsedAdminID, parsedCoverageIDs)
 }
 
 func (s *customerService) GetByID(id uuid.UUID) (*models.Customer, error) {

@@ -55,9 +55,37 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 	limitStr := ctx.Query("limit", "10")
 	search := ctx.Query("search", "")
 	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
-	coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
+
+	// Parse coverage_ids manually
+	var coverageIDs []string
+	ctx.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		k := string(key)
+		v := string(value)
+		if k == "coverage_ids" || k == "coverage_ids[]" {
+			if v != "" {
+				coverageIDs = append(coverageIDs, strings.TrimSpace(v))
+			}
+		}
+	})
+
+	// Fallback to single coverage_id
+	if len(coverageIDs) == 0 {
+		if coverageID := strings.TrimSpace(ctx.Query("coverage_id", "")); coverageID != "" {
+			coverageIDs = []string{coverageID}
+		}
+	}
+
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
+
+	// Check if user is root, if yes, get all data without pagination
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "root" {
+			limit = 999999
+			page = 1
+		}
+	}
 
 	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
 		role, _ := userClaims["role"].(string)
@@ -67,7 +95,7 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 		}
 	}
 
-	customers, total, err := c.service.GetAll(page, limit, search, adminID, coverageID)
+	customers, total, err := c.service.GetAll(page, limit, search, adminID, coverageIDs)
 	if err != nil {
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "invalid admin_id") || strings.Contains(msg, "invalid coverage_id") {
@@ -163,7 +191,25 @@ func (c *CustomerController) Delete(ctx *fiber.Ctx) error {
 func (c *CustomerController) ExportCSV(ctx *fiber.Ctx) error {
 	search := ctx.Query("search", "")
 	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
-	coverageID := strings.TrimSpace(ctx.Query("coverage_id", ""))
+
+	// Parse coverage_ids manually
+	var coverageIDs []string
+	ctx.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		k := string(key)
+		v := string(value)
+		if k == "coverage_ids" || k == "coverage_ids[]" {
+			if v != "" {
+				coverageIDs = append(coverageIDs, strings.TrimSpace(v))
+			}
+		}
+	})
+
+	// Fallback to single coverage_id
+	if len(coverageIDs) == 0 {
+		if coverageID := strings.TrimSpace(ctx.Query("coverage_id", "")); coverageID != "" {
+			coverageIDs = []string{coverageID}
+		}
+	}
 
 	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
 		role, _ := userClaims["role"].(string)
@@ -173,7 +219,7 @@ func (c *CustomerController) ExportCSV(ctx *fiber.Ctx) error {
 		}
 	}
 
-	customers, _, err := c.service.GetAll(1, 100000, search, adminID, coverageID)
+	customers, _, err := c.service.GetAll(1, 100000, search, adminID, coverageIDs)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

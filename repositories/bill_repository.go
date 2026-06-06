@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
@@ -77,7 +78,15 @@ func (r *billRepository) FindAllPaginated(
 		query = query.Where("customers.admin_id = ?", *adminID)
 	}
 	if status != "" {
-		query = query.Where("LOWER(bills.status) = LOWER(?)", status)
+		if strings.ToLower(status) == "overdue" {
+			// For overdue status, include both:
+			// 1. Bills explicitly marked as overdue
+			// 2. Unpaid bills that are past due date
+			now := time.Now()
+			query = query.Where("(LOWER(bills.status) = ? OR (LOWER(bills.status) = ? AND bills.due_date < ?))", "overdue", "unpaid", now)
+		} else {
+			query = query.Where("LOWER(bills.status) = LOWER(?)", status)
+		}
 	}
 	if startDate != nil {
 		query = query.Where("bills.due_date >= ?", *startDate)
@@ -202,12 +211,13 @@ func (r *billRepository) GetDashboardStats() (map[string]int64, error) {
 	}
 	stats["paid_bills"] = paidCount
 
-	// Count unpaid bills
-	var unpaidCount int64
-	if err := r.db.Model(&models.Bill{}).Where("status = ?", "unpaid").Count(&unpaidCount).Error; err != nil {
+	// Count overdue bills (both marked as overdue and unpaid past due date)
+	var overdueCount int64
+	now := time.Now()
+	if err := r.db.Model(&models.Bill{}).Where("(status = ? OR (status = ? AND due_date < ?))", "overdue", "unpaid", now).Count(&overdueCount).Error; err != nil {
 		return nil, err
 	}
-	stats["unpaid_bills"] = unpaidCount
+	stats["overdue_bills"] = overdueCount
 
 	// Count total customers
 	var customerCount int64

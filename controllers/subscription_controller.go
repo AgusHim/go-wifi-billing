@@ -3,6 +3,7 @@ package controllers
 import (
 	"log"
 	"strconv"
+	"strings"
 
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
@@ -63,6 +64,15 @@ func (c *SubscriptionController) GetAll(ctx *fiber.Ctx) error {
 	customerDeleted := ctx.Query("customer_deleted", "")
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
+
+	// Check if user is root, if yes, get all data without pagination
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "root" {
+			limit = 999999
+			page = 1
+		}
+	}
 
 	subscriptions, total, err := c.service.GetAll(page, limit, search, &customerID, &status, &customerDeleted)
 	if err != nil {

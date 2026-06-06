@@ -51,6 +51,15 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
+	// Check if user is root, if yes, get all data without pagination
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "root" {
+			limit = 999999
+			page = 1
+		}
+	}
+
 	// Parse coverage_ids (both coverage_ids and coverage_ids[] formats) manually
 	var coverageIDs []string
 
