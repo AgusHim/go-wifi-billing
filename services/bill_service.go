@@ -22,6 +22,7 @@ type BillService interface {
 	Create(input models.Bill) (models.Bill, error)
 	Update(id string, input models.Bill) (models.Bill, error)
 	Delete(id string) error
+	DeleteCurrentMonthUnpaidBills() (int64, error)
 	GenerateMonthlyBills() error
 	GetByPublicID(publicID string) (*models.Bill, error)
 	GetByUserID(userID string) ([]models.Bill, error)
@@ -201,6 +202,18 @@ func (s *billService) Delete(id string) error {
 	return s.repo.Delete(id)
 }
 
+func (s *billService) DeleteCurrentMonthUnpaidBills() (int64, error) {
+	now := time.Now()
+	startOfMonth, endOfMonth := billMonthRange(now.Year(), int(now.Month()))
+
+	deleted, err := s.repo.DeleteUnpaidByBillDateRange(startOfMonth, endOfMonth)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete current month unpaid bills: %w", err)
+	}
+
+	return deleted, nil
+}
+
 func (s *billService) GenerateMonthlyBills() error {
 	status := "active"
 	subs, err := s.subRepo.FindForBill(nil, &status, true)
@@ -209,8 +222,9 @@ func (s *billService) GenerateMonthlyBills() error {
 		return fmt.Errorf("failed to fetch subscriptions: %w", err)
 	}
 
-	currentMonth := int(time.Now().Month())
-	currentYear := time.Now().Year()
+	now := time.Now()
+	currentMonth := int(now.Month())
+	currentYear := now.Year()
 
 	log.Printf("Generating monthly bills for %d-%02d", currentYear, currentMonth)
 
@@ -225,7 +239,7 @@ func (s *billService) GenerateMonthlyBills() error {
 			return err
 		}
 
-		billDate := time.Now()
+		billDate := now
 		dueDate := time.Date(currentYear, time.Month(currentMonth), sub.DueDay, 23, 59, 59, 0, time.Local)
 		if dueDate.Month() != time.Month(currentMonth) {
 			dueDate = time.Date(currentYear, time.Month(currentMonth)+1, 1, 23, 59, 59, 0, time.Local).AddDate(0, 0, -1)
@@ -259,8 +273,8 @@ func (s *billService) GenerateMonthlyBills() error {
 			PPN:            ppn,
 			UniqueCode:     uniqueCode,
 			Status:         "unpaid",
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}
 		applyBillSnapshot(bill, &sub)
 
@@ -279,6 +293,11 @@ func (s *billService) GenerateMonthlyBills() error {
 	// }()
 
 	return nil
+}
+
+func billMonthRange(year int, month int) (time.Time, time.Time) {
+	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
+	return startOfMonth, startOfMonth.AddDate(0, 1, 0)
 }
 
 func (s *billService) GetUnpaidBills() ([]models.Bill, error) {

@@ -22,5 +22,6 @@ type CreateCustomerDTO struct {
 	// Legacy PPPoE fields kept temporarily for backward compatibility.
 	IDPPOE      *string `json:"id_ppoe,omitempty"`
 	ProfilePPOE *string `json:"profile_ppoe,omitempty"`
-	AdminID     *string `json:"admin_id,omitempty" validate:"omitempty,uuid4"`
+	AdminID              *string `json:"admin_id,omitempty" validate:"omitempty,uuid4"`
+	InstallationSchedule *string `json:"installation_schedule,omitempty"`
 }

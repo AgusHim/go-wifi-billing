@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Agushim/go_wifi_billing/dto"
 	"github.com/Agushim/go_wifi_billing/models"
@@ -93,6 +94,25 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 		description = *body.Description
 	}
 
+	var installationSchedule *time.Time
+	if body.InstallationSchedule != nil && *body.InstallationSchedule != "" {
+		t, err := time.Parse(time.RFC3339, *body.InstallationSchedule)
+		if err != nil {
+			t, err = time.Parse("2006-01-02T15:04:05Z07:00", *body.InstallationSchedule)
+			if err != nil {
+				t, err = time.Parse("2006-01-02T15:04", *body.InstallationSchedule)
+				if err != nil {
+					t, err = time.Parse("2006-01-02", *body.InstallationSchedule)
+				}
+			}
+		}
+		if err == nil {
+			installationSchedule = &t
+		} else {
+			return nil, fmt.Errorf("invalid installation_schedule format: %w", err)
+		}
+	}
+
 	// Auto-generate service number unik per coverage; input dari client diabaikan.
 	serviceNumber, err := s.repo.NextServiceNumber(coverageID)
 	if err != nil {
@@ -101,26 +121,27 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 
 	// Buat customer baru
 	customer := &models.Customer{
-		ID:            uuid.New(),
-		UserID:        user.ID,
-		User:          user,
-		CoverageID:    coverageID,
-		OdcID:         odcID,
-		OdpID:         odpID,
-		PortOdp:       portOdp,
-		ServiceNumber: serviceNumber,
-		Card:          *body.Card,
-		IDCard:        *body.IDCard,
-		IsSendWa:      *body.IsSendWA,
-		Status:        *body.Status,
-		Address:       *body.Address,
-		Description:   description,
-		Latitude:      *body.Latitude,
-		Longitude:     *body.Longitude,
-		Mode:          *body.Mode,
-		IDPPOE:        *body.IDPPOE,
-		ProfilePPOE:   *body.ProfilePPOE,
-		AdminID:       &adminID,
+		ID:                   uuid.New(),
+		UserID:               user.ID,
+		User:                 user,
+		CoverageID:           coverageID,
+		OdcID:                odcID,
+		OdpID:                odpID,
+		PortOdp:              portOdp,
+		ServiceNumber:        serviceNumber,
+		Card:                 *body.Card,
+		IDCard:               *body.IDCard,
+		IsSendWa:             *body.IsSendWA,
+		Status:               *body.Status,
+		Address:              *body.Address,
+		Description:          description,
+		Latitude:             *body.Latitude,
+		Longitude:            *body.Longitude,
+		Mode:                 *body.Mode,
+		IDPPOE:               *body.IDPPOE,
+		ProfilePPOE:          *body.ProfilePPOE,
+		AdminID:              &adminID,
+		InstallationSchedule: installationSchedule,
 	}
 
 	if err := s.repo.Create(customer); err != nil {
@@ -213,6 +234,26 @@ func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*m
 		return nil, err
 	}
 	existing.AdminID = &adminID
+
+	var installationSchedule *time.Time
+	if input.InstallationSchedule != nil && *input.InstallationSchedule != "" {
+		t, err := time.Parse(time.RFC3339, *input.InstallationSchedule)
+		if err != nil {
+			t, err = time.Parse("2006-01-02T15:04:05Z07:00", *input.InstallationSchedule)
+			if err != nil {
+				t, err = time.Parse("2006-01-02T15:04", *input.InstallationSchedule)
+				if err != nil {
+					t, err = time.Parse("2006-01-02", *input.InstallationSchedule)
+				}
+			}
+		}
+		if err == nil {
+			installationSchedule = &t
+		} else {
+			return nil, fmt.Errorf("invalid installation_schedule format: %w", err)
+		}
+	}
+	existing.InstallationSchedule = installationSchedule
 
 	user, err := s.userService.GetByID(existing.UserID.String())
 	if err != nil {

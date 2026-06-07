@@ -28,8 +28,9 @@ type Customer struct {
 	// New provisioning flow should prefer ServiceAccount + NetworkPlan.
 	IDPPOE      string         `json:"id_ppoe"`
 	ProfilePPOE string         `json:"profile_ppoe"`
-	AdminID     *uuid.UUID     `json:"admin_id" gorm:"type:uuid"`
-	CreatedAt   time.Time      `json:"created_at"`
+	AdminID              *uuid.UUID     `json:"admin_id" gorm:"type:uuid"`
+	InstallationSchedule *time.Time     `json:"installation_schedule"`
+	CreatedAt            time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 

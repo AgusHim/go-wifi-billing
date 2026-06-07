@@ -18,6 +18,7 @@ type BillRepository interface {
 	Create(bill *models.Bill) error
 	Update(bill *models.Bill) error
 	Delete(id string) error
+	DeleteUnpaidByBillDateRange(startDate time.Time, endDate time.Time) (int64, error)
 	FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error)
 	FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID, month int, year int) (*models.Bill, error)
 	FindUnpaidBills() ([]models.Bill, error)
@@ -159,9 +160,17 @@ func (r *billRepository) Delete(id string) error {
 	return r.db.Delete(&models.Bill{}, "id = ?", id).Error
 }
 
+func (r *billRepository) DeleteUnpaidByBillDateRange(startDate time.Time, endDate time.Time) (int64, error) {
+	result := r.db.
+		Where("LOWER(status) = ? AND bill_date >= ? AND bill_date < ?", "unpaid", startDate, endDate).
+		Delete(&models.Bill{})
+
+	return result.RowsAffected, result.Error
+}
+
 func (r *billRepository) FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error) {
 	var bill models.Bill
-	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
 	endOfMonth := startOfMonth.AddDate(0, 1, 0)
 	err := r.db.
 		Where("customer_id = ? AND bill_date >= ? AND bill_date < ?",
@@ -176,7 +185,7 @@ func (r *billRepository) FindBillByCustomerAndMonth(customerID string, month int
 
 func (r *billRepository) FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID, month int, year int) (*models.Bill, error) {
 	var bill models.Bill
-	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
 	endOfMonth := startOfMonth.AddDate(0, 1, 0)
 	err := r.db.
 		Where("subscription_id = ? AND bill_date >= ? AND bill_date < ?",

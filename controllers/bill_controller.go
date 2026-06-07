@@ -33,6 +33,7 @@ func (c *BillController) RegisterRoutes(router fiber.Router) {
 	admin_api.Get("/", middlewares.UserProtected(), c.GetAll)
 	admin_api.Get("/:id", c.GetByID)
 	admin_api.Put("/:id", c.Update)
+	admin_api.Delete("/generated/current-month/unpaid", c.DeleteCurrentMonthUnpaidBills)
 	admin_api.Delete("/:id", c.Delete)
 }
 
@@ -212,6 +213,20 @@ func (c *BillController) Delete(ctx *fiber.Ctx) error {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "message": "Bill deleted successfully"})
+}
+
+func (c *BillController) DeleteCurrentMonthUnpaidBills(ctx *fiber.Ctx) error {
+	deleted, err := c.service.DeleteCurrentMonthUnpaidBills()
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"deleted_count": deleted,
+		},
+		"message": "Current month unpaid generated bills deleted successfully",
+	})
 }
 
 func (c *BillController) GenerateMonthlyBills(ctx *fiber.Ctx) error {
