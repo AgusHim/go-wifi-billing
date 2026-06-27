@@ -213,17 +213,28 @@ func (r *billRepository) FindUnpaidBills() ([]models.Bill, error) {
 func (r *billRepository) GetDashboardStats() (map[string]int64, error) {
 	stats := make(map[string]int64)
 
+	// Only count bills for the current month so that the total bills match the active subscriptions
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+	endOfMonth := startOfMonth.AddDate(0, 1, 0)
+
 	// Count paid bills
 	var paidCount int64
-	if err := r.db.Model(&models.Bill{}).Where("status = ?", "paid").Count(&paidCount).Error; err != nil {
+	if err := r.db.Model(&models.Bill{}).Where("status = ? AND bill_date >= ? AND bill_date < ?", "paid", startOfMonth, endOfMonth).Count(&paidCount).Error; err != nil {
 		return nil, err
 	}
 	stats["paid_bills"] = paidCount
 
+	// Count unpaid bills (status = unpaid, regardless of due date)
+	var unpaidCount int64
+	if err := r.db.Model(&models.Bill{}).Where("status = ? AND bill_date >= ? AND bill_date < ?", "unpaid", startOfMonth, endOfMonth).Count(&unpaidCount).Error; err != nil {
+		return nil, err
+	}
+	stats["unpaid_bills"] = unpaidCount
+
 	// Count overdue bills (both marked as overdue and unpaid past due date)
 	var overdueCount int64
-	now := time.Now()
-	if err := r.db.Model(&models.Bill{}).Where("(status = ? OR (status = ? AND due_date < ?))", "overdue", "unpaid", now).Count(&overdueCount).Error; err != nil {
+	if err := r.db.Model(&models.Bill{}).Where("(status = ? OR (status = ? AND due_date < ?)) AND bill_date >= ? AND bill_date < ?", "overdue", "unpaid", now, startOfMonth, endOfMonth).Count(&overdueCount).Error; err != nil {
 		return nil, err
 	}
 	stats["overdue_bills"] = overdueCount
