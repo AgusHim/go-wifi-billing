@@ -217,24 +217,31 @@ func (r *billRepository) GetDashboardStats() (map[string]int64, error) {
 	now := time.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 	endOfMonth := startOfMonth.AddDate(0, 1, 0)
+	currentActiveSubscriptionBills := func() *gorm.DB {
+		return r.db.Model(&models.Bill{}).
+			Joins("JOIN subscriptions ON subscriptions.id = bills.subscription_id").
+			Where("subscriptions.deleted_at IS NULL").
+			Where("LOWER(subscriptions.status) = ?", "active").
+			Where("bills.bill_date >= ? AND bills.bill_date < ?", startOfMonth, endOfMonth)
+	}
 
 	// Count paid bills
 	var paidCount int64
-	if err := r.db.Model(&models.Bill{}).Where("status = ? AND bill_date >= ? AND bill_date < ?", "paid", startOfMonth, endOfMonth).Count(&paidCount).Error; err != nil {
+	if err := currentActiveSubscriptionBills().Where("LOWER(bills.status) = ?", "paid").Count(&paidCount).Error; err != nil {
 		return nil, err
 	}
 	stats["paid_bills"] = paidCount
 
-	// Count unpaid bills (status = unpaid, regardless of due date)
+	// Count unpaid bills that are not overdue yet, keeping dashboard status buckets exclusive.
 	var unpaidCount int64
-	if err := r.db.Model(&models.Bill{}).Where("status = ? AND bill_date >= ? AND bill_date < ?", "unpaid", startOfMonth, endOfMonth).Count(&unpaidCount).Error; err != nil {
+	if err := currentActiveSubscriptionBills().Where("LOWER(bills.status) = ? AND bills.due_date >= ?", "unpaid", now).Count(&unpaidCount).Error; err != nil {
 		return nil, err
 	}
 	stats["unpaid_bills"] = unpaidCount
 
 	// Count overdue bills (both marked as overdue and unpaid past due date)
 	var overdueCount int64
-	if err := r.db.Model(&models.Bill{}).Where("(status = ? OR (status = ? AND due_date < ?)) AND bill_date >= ? AND bill_date < ?", "overdue", "unpaid", now, startOfMonth, endOfMonth).Count(&overdueCount).Error; err != nil {
+	if err := currentActiveSubscriptionBills().Where("(LOWER(bills.status) = ? OR (LOWER(bills.status) = ? AND bills.due_date < ?))", "overdue", "unpaid", now).Count(&overdueCount).Error; err != nil {
 		return nil, err
 	}
 	stats["overdue_bills"] = overdueCount
@@ -281,15 +288,18 @@ func (r *billRepository) GetDashboardChartRows(fromDate time.Time, adminID *uuid
 	var bills []models.Bill
 
 	query := r.db.Model(&models.Bill{}).
-		Select("bill_date", "status", "amount")
+		Select("bills.subscription_id", "bills.bill_date", "bills.due_date", "bills.status", "bills.amount").
+		Joins("JOIN subscriptions ON subscriptions.id = bills.subscription_id").
+		Where("subscriptions.deleted_at IS NULL").
+		Where("LOWER(subscriptions.status) = ?", "active")
 
 	if adminID != nil {
-		query = query.Where("admin_id = ?", *adminID)
+		query = query.Where("bills.admin_id = ?", *adminID)
 	}
 
 	err := query.
-		Where("bill_date >= ?", fromDate).
-		Order("bill_date ASC").
+		Where("bills.bill_date >= ?", fromDate).
+		Order("bills.bill_date ASC").
 		Find(&bills).Error
 	if err != nil {
 		return nil, err

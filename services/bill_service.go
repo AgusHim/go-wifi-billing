@@ -492,18 +492,18 @@ func (s *billService) GetDashboardCharts(months int, adminID string) (map[string
 		}
 
 		status := strings.ToLower(strings.TrimSpace(bill.Status))
-		switch status {
-		case "paid":
+		isOverdue := status == "overdue" || (status == "unpaid" && bill.DueDate.Before(now))
+		if status == "paid" {
 			trend[idx].Paid++
 			trend[idx].AmountPaid += int64(bill.Amount)
 			statusTotals["paid"]++
 			amountTotals["paid"] += int64(bill.Amount)
-		case "overdue":
+		} else if isOverdue {
 			trend[idx].Overdue++
 			trend[idx].AmountOverdue += int64(bill.Amount)
 			statusTotals["overdue"]++
 			amountTotals["overdue"] += int64(bill.Amount)
-		default:
+		} else {
 			trend[idx].Unpaid++
 			trend[idx].AmountUnpaid += int64(bill.Amount)
 			statusTotals["unpaid"]++
