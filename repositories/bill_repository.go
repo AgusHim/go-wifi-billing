@@ -242,6 +242,13 @@ func (r *billRepository) GetDashboardStats() (map[string]int64, error) {
 	}
 	stats["total_admins"] = adminCount
 
+	// Count total active subscriptions
+	var subscriptionCount int64
+	if err := r.db.Table("subscriptions").Where("deleted_at IS NULL AND status = ?", "active").Count(&subscriptionCount).Error; err != nil {
+		return nil, err
+	}
+	stats["total_subscriptions"] = subscriptionCount
+
 	return stats, nil
 }
 
