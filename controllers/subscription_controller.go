@@ -62,6 +62,7 @@ func (c *SubscriptionController) GetAll(ctx *fiber.Ctx) error {
 	limitStr := ctx.Query("limit", "10")
 	search := ctx.Query("search", "")
 	customerDeleted := ctx.Query("customer_deleted", "")
+	endDate := ctx.Query("end_date", "")
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
@@ -74,7 +75,12 @@ func (c *SubscriptionController) GetAll(ctx *fiber.Ctx) error {
 		}
 	}
 
-	subscriptions, total, err := c.service.GetAll(page, limit, search, &customerID, &status, &customerDeleted)
+	var endDateFilter *string
+	if endDate != "" {
+		endDateFilter = &endDate
+	}
+
+	subscriptions, total, err := c.service.GetAll(page, limit, search, &customerID, &status, &customerDeleted, endDateFilter)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

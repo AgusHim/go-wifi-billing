@@ -10,7 +10,7 @@ import (
 
 type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
-	FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string) ([]models.Subscription, int64, error)
+	FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string) ([]models.Subscription, int64, error)
 	FindForBill(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
 	FindAutoRenewCandidates(threshold time.Time, renewalMode string) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
@@ -32,7 +32,7 @@ func (r *subscriptionRepository) Create(subscription *models.Subscription) error
 	return r.db.Create(subscription).Error
 }
 
-func (r *subscriptionRepository) FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string) ([]models.Subscription, int64, error) {
+func (r *subscriptionRepository) FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string) ([]models.Subscription, int64, error) {
 	var (
 		subscriptions []models.Subscription
 		total         int64
@@ -81,6 +81,16 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 	// Filter by Status
 	if status != nil && *status != "" {
 		query = query.Where("status = ?", *status)
+	}
+
+	// Filter by EndDate (format YYYY-MM)
+	if endDateFilter != nil && *endDateFilter != "" {
+		parsedDate, err := time.Parse("2006-01", *endDateFilter)
+		if err == nil {
+			startOfMonth := time.Date(parsedDate.Year(), parsedDate.Month(), 1, 0, 0, 0, 0, time.Local)
+			endOfMonth := startOfMonth.AddDate(0, 1, 0)
+			query = query.Where("end_date >= ? AND end_date < ?", startOfMonth, endOfMonth)
+		}
 	}
 
 	// Search by related user name or email

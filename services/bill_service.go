@@ -216,7 +216,9 @@ func (s *billService) DeleteCurrentMonthUnpaidBills() (int64, error) {
 
 func (s *billService) GenerateMonthlyBills() error {
 	status := "active"
-	subs, err := s.subRepo.FindForBill(nil, &status, true)
+	// Luluskan false agar mengambil SEMUA active subscription, bukan hanya yang end_date-nya bulan ini.
+	// Hal ini untuk memastikan customer yang telat bayar bulan lalu tetap mendapat tagihan baru.
+	subs, err := s.subRepo.FindForBill(nil, &status, false)
 	log.Printf("Found %d active subscriptions", len(subs))
 	if err != nil {
 		return fmt.Errorf("failed to fetch subscriptions: %w", err)
