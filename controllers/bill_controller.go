@@ -245,7 +245,22 @@ func (c *BillController) SendReminders(ctx *fiber.Ctx) error {
 }
 
 func (c *BillController) GetDashboardStats(ctx *fiber.Ctx) error {
-	stats, err := c.service.GetDashboardStats()
+	monthStr := strings.TrimSpace(ctx.Query("month", "0"))
+	yearStr := strings.TrimSpace(ctx.Query("year", "0"))
+	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
+
+	month, _ := strconv.Atoi(monthStr)
+	year, _ := strconv.Atoi(yearStr)
+
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		userID, _ := userClaims["user_id"].(string)
+		if strings.TrimSpace(role) != "" && strings.ToLower(role) != "admin" && strings.TrimSpace(userID) != "" {
+			adminID = userID
+		}
+	}
+
+	stats, err := c.service.GetDashboardStats(month, year, adminID)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

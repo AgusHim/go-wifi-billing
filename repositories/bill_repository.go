@@ -22,7 +22,7 @@ type BillRepository interface {
 	FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error)
 	FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID, month int, year int) (*models.Bill, error)
 	FindUnpaidBills() ([]models.Bill, error)
-	GetDashboardStats() (map[string]int64, error)
+	GetDashboardStats(month, year int, adminID *uuid.UUID) (map[string]int64, error)
 	GetRecentPaidBills(limit int) ([]models.Bill, error)
 	GetDashboardChartRows(fromDate time.Time, adminID *uuid.UUID) ([]models.Bill, error)
 }
@@ -210,59 +210,99 @@ func (r *billRepository) FindUnpaidBills() ([]models.Bill, error) {
 	return bills, err
 }
 
-func (r *billRepository) GetDashboardStats() (map[string]int64, error) {
+func (r *billRepository) GetDashboardStats(month, year int, adminID *uuid.UUID) (map[string]int64, error) {
 	stats := make(map[string]int64)
 
-	// Only count bills for the current month so that the total bills match the active subscriptions
 	now := time.Now()
-	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+	if year <= 0 {
+		year = now.Year()
+	}
+	if month <= 0 || month > 12 {
+		month = int(now.Month())
+	}
+
+	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
 	endOfMonth := startOfMonth.AddDate(0, 1, 0)
-	currentActiveSubscriptionBills := func() *gorm.DB {
-		return r.db.Model(&models.Bill{}).
+
+	baseBillQuery := func() *gorm.DB {
+		q := r.db.Model(&models.Bill{}).
 			Joins("JOIN subscriptions ON subscriptions.id = bills.subscription_id").
 			Where("subscriptions.deleted_at IS NULL").
 			Where("LOWER(subscriptions.status) = ?", "active").
 			Where("bills.bill_date >= ? AND bills.bill_date < ?", startOfMonth, endOfMonth)
+		if adminID != nil {
+			q = q.Joins("JOIN customers ON customers.id = bills.customer_id").Where("customers.admin_id = ?", *adminID)
+		}
+		return q
 	}
 
-	// Count paid bills
-	var paidCount int64
-	if err := currentActiveSubscriptionBills().Where("LOWER(bills.status) = ?", "paid").Count(&paidCount).Error; err != nil {
+	// Helper to sum amount and count
+	getStats := func(condition string, args ...interface{}) (int64, int64, error) {
+		type Result struct {
+			Count  int64
+			Amount int64
+		}
+		var res Result
+		err := baseBillQuery().Where(condition, args...).
+			Select("COUNT(bills.id) as count, COALESCE(SUM(bills.amount), 0) as amount").
+			Scan(&res).Error
+		return res.Count, res.Amount, err
+	}
+
+	// Paid
+	paidCount, paidAmount, err := getStats("LOWER(bills.status) = ?", "paid")
+	if err != nil {
 		return nil, err
 	}
 	stats["paid_bills"] = paidCount
+	stats["amount_paid"] = paidAmount
 
-	// Count unpaid bills that are not overdue yet, keeping dashboard status buckets exclusive.
-	var unpaidCount int64
-	if err := currentActiveSubscriptionBills().Where("LOWER(bills.status) = ? AND bills.due_date >= ?", "unpaid", now).Count(&unpaidCount).Error; err != nil {
+	// Unpaid
+	// Using end of selected month to check if it's past due? Or time.Now()?
+	// If looking at a past month, due_date is compared to time.Now() generally to determine if it's currently overdue.
+	unpaidCount, unpaidAmount, err := getStats("LOWER(bills.status) = ? AND bills.due_date >= ?", "unpaid", now)
+	if err != nil {
 		return nil, err
 	}
 	stats["unpaid_bills"] = unpaidCount
+	stats["amount_unpaid"] = unpaidAmount
 
-	// Count overdue bills (both marked as overdue and unpaid past due date)
-	var overdueCount int64
-	if err := currentActiveSubscriptionBills().Where("(LOWER(bills.status) = ? OR (LOWER(bills.status) = ? AND bills.due_date < ?))", "overdue", "unpaid", now).Count(&overdueCount).Error; err != nil {
+	// Overdue
+	overdueCount, overdueAmount, err := getStats("(LOWER(bills.status) = ? OR (LOWER(bills.status) = ? AND bills.due_date < ?))", "overdue", "unpaid", now)
+	if err != nil {
 		return nil, err
 	}
 	stats["overdue_bills"] = overdueCount
+	stats["amount_overdue"] = overdueAmount
 
-	// Count total customers
+	// Total customers
+	custQuery := r.db.Table("customers").Where("customers.deleted_at IS NULL")
+	if adminID != nil {
+		custQuery = custQuery.Where("customers.admin_id = ?", *adminID)
+	}
 	var customerCount int64
-	if err := r.db.Table("customers").Where("deleted_at IS NULL").Count(&customerCount).Error; err != nil {
+	if err := custQuery.Count(&customerCount).Error; err != nil {
 		return nil, err
 	}
 	stats["total_customers"] = customerCount
 
-	// Count total admins
+	// Total admins
 	var adminCount int64
 	if err := r.db.Table("users").Where("role = ?", "admin").Count(&adminCount).Error; err != nil {
 		return nil, err
 	}
 	stats["total_admins"] = adminCount
 
-	// Count total active subscriptions
+	// Total active subscriptions for the given month
+	subQuery := r.db.Table("subscriptions").
+		Where("subscriptions.deleted_at IS NULL AND subscriptions.status = ?", "active").
+		Where("subscriptions.start_date < ?", endOfMonth).
+		Where("subscriptions.end_date IS NULL OR subscriptions.end_date >= ?", startOfMonth)
+	if adminID != nil {
+		subQuery = subQuery.Joins("JOIN customers ON customers.id = subscriptions.customer_id").Where("customers.admin_id = ?", *adminID)
+	}
 	var subscriptionCount int64
-	if err := r.db.Table("subscriptions").Where("deleted_at IS NULL AND status = ?", "active").Count(&subscriptionCount).Error; err != nil {
+	if err := subQuery.Count(&subscriptionCount).Error; err != nil {
 		return nil, err
 	}
 	stats["total_subscriptions"] = subscriptionCount

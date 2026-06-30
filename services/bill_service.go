@@ -28,7 +28,7 @@ type BillService interface {
 	GetByUserID(userID string) ([]models.Bill, error)
 	GetUnpaidBills() ([]models.Bill, error)
 	SendReminders() (map[string]interface{}, error)
-	GetDashboardStats() (map[string]interface{}, error)
+	GetDashboardStats(month, year int, adminID string) (map[string]interface{}, error)
 	GetDashboardCharts(months int, adminID string) (map[string]interface{}, error)
 	GetRecentPaidBills(limit int) ([]models.Bill, error)
 }
@@ -231,6 +231,21 @@ func (s *billService) GenerateMonthlyBills() error {
 	log.Printf("Generating monthly bills for %d-%02d", currentYear, currentMonth)
 
 	for _, sub := range subs {
+		// Cek apakah langganan baru mulai di masa depan (bulan/tahun lebih depan)
+		subStartMonth := time.Date(sub.StartDate.Year(), sub.StartDate.Month(), 1, 0, 0, 0, 0, time.Local)
+		billMonthStart := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, time.Local)
+		if billMonthStart.Before(subStartMonth) {
+			continue // Belum saatnya ditagih
+		}
+
+		// Cek apakah langganan sudah berakhir sebelum bulan tagihan ini
+		if !sub.EndDate.IsZero() {
+			subEndMonth := time.Date(sub.EndDate.Year(), sub.EndDate.Month(), 1, 0, 0, 0, 0, time.Local)
+			if subEndMonth.Before(billMonthStart) {
+				continue // Sudah lewat masa aktifnya
+			}
+		}
+
 		// Cek apakah sudah ada bill bulan ini
 		existing, err := s.repo.FindBillBySubscriptionAndMonth(sub.ID, currentMonth, currentYear)
 
@@ -415,8 +430,17 @@ func (r *reminderStats) toMap() map[string]interface{} {
 	return result
 }
 
-func (s *billService) GetDashboardStats() (map[string]interface{}, error) {
-	stats, err := s.repo.GetDashboardStats()
+func (s *billService) GetDashboardStats(month, year int, adminID string) (map[string]interface{}, error) {
+	adminID = strings.TrimSpace(adminID)
+	var parsedAdminID *uuid.UUID
+	if adminID != "" {
+		uid, err := uuid.Parse(adminID)
+		if err == nil {
+			parsedAdminID = &uid
+		}
+	}
+
+	stats, err := s.repo.GetDashboardStats(month, year, parsedAdminID)
 	if err != nil {
 		return nil, err
 	}
