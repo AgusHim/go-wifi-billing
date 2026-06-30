@@ -38,7 +38,7 @@ func TestGetDashboardStatsCountsOnlyCurrentActiveSubscriptionBillsWithExclusiveS
 	createDashboardStatsBill(t, db, suspendedWithBill.ID, "paid", startOfMonth, pastDueDate)
 	createDashboardStatsBill(t, db, deletedWithBill.ID, "paid", startOfMonth, pastDueDate)
 
-	stats, err := NewBillRepository(db).GetDashboardStats()
+	stats, err := NewBillRepository(db).GetDashboardStats(int(now.Month()), now.Year(), nil)
 	if err != nil {
 		t.Fatalf("get dashboard stats: %v", err)
 	}
