@@ -295,7 +295,7 @@ func (r *billRepository) GetDashboardStats(month, year int, adminID *uuid.UUID) 
 
 	// Total active subscriptions for the given month
 	subQuery := r.db.Table("subscriptions").
-		Where("subscriptions.deleted_at IS NULL AND subscriptions.status = ?", "active").
+		Where("subscriptions.deleted_at IS NULL AND LOWER(subscriptions.status) = ?", "active").
 		Where("subscriptions.start_date < ?", endOfMonth).
 		Where("subscriptions.end_date IS NULL OR subscriptions.end_date >= ?", startOfMonth)
 	if adminID != nil {
