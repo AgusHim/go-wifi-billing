@@ -294,10 +294,10 @@ func (r *billRepository) GetDashboardStats(month, year int, adminID *uuid.UUID) 
 	stats["total_admins"] = adminCount
 
 	// Total active subscriptions for the given month
+	// Hanya hitung langganan yang start_date-nya jatuh di bulan yang dipilih
 	subQuery := r.db.Table("subscriptions").
 		Where("subscriptions.deleted_at IS NULL AND LOWER(subscriptions.status) = ?", "active").
-		Where("subscriptions.start_date < ?", endOfMonth).
-		Where("subscriptions.end_date IS NULL OR subscriptions.end_date >= ?", startOfMonth)
+		Where("subscriptions.start_date >= ? AND subscriptions.start_date < ?", startOfMonth, endOfMonth)
 	if adminID != nil {
 		subQuery = subQuery.Joins("JOIN customers ON customers.id = subscriptions.customer_id").Where("customers.admin_id = ?", *adminID)
 	}

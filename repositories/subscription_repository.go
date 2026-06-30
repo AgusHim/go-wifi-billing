@@ -84,13 +84,13 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 	}
 
 	// Filter by Active Month (format YYYY-MM)
+	// Hanya tampilkan langganan yang start_date-nya jatuh di bulan yang dipilih
 	if endDateFilter != nil && *endDateFilter != "" {
 		parsedDate, err := time.Parse("2006-01", *endDateFilter)
 		if err == nil {
 			startOfMonth := time.Date(parsedDate.Year(), parsedDate.Month(), 1, 0, 0, 0, 0, time.Local)
 			endOfMonth := startOfMonth.AddDate(0, 1, 0)
-			query = query.Where("start_date < ?", endOfMonth).
-				Where("(end_date IS NULL OR end_date >= ?)", startOfMonth)
+			query = query.Where("start_date >= ? AND start_date < ?", startOfMonth, endOfMonth)
 		}
 	}
 
