@@ -293,10 +293,13 @@ func (r *billRepository) GetDashboardStats(month, year int, adminID *uuid.UUID) 
 	}
 	stats["total_admins"] = adminCount
 
-	// Total active subscriptions
-	// Hitung semua langganan yang aktif (tidak dibatasi bulan)
+	// Total active subscriptions yang sudah bisa ditagih di bulan yang dipilih.
+	// Logika ini disinkronkan dengan GenerateMonthlyBills:
+	// - start_date harus sudah dimulai (start_date <= akhir bulan yang dipilih)
+	// - end_date belum berakhir sebelum bulan yang dipilih (atau NULL)
 	subQuery := r.db.Table("subscriptions").
-		Where("subscriptions.deleted_at IS NULL AND LOWER(subscriptions.status) = ?", "active")
+		Where("subscriptions.deleted_at IS NULL AND LOWER(subscriptions.status) = ?", "active").
+		Where("subscriptions.start_date < ?", endOfMonth)
 	if adminID != nil {
 		subQuery = subQuery.Joins("JOIN customers ON customers.id = subscriptions.customer_id").Where("customers.admin_id = ?", *adminID)
 	}
