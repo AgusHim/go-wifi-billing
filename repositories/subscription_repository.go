@@ -83,13 +83,14 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 		query = query.Where("status = ?", *status)
 	}
 
-	// Filter by EndDate (format YYYY-MM)
+	// Filter by Active Month (format YYYY-MM)
 	if endDateFilter != nil && *endDateFilter != "" {
 		parsedDate, err := time.Parse("2006-01", *endDateFilter)
 		if err == nil {
 			startOfMonth := time.Date(parsedDate.Year(), parsedDate.Month(), 1, 0, 0, 0, 0, time.Local)
 			endOfMonth := startOfMonth.AddDate(0, 1, 0)
-			query = query.Where("end_date >= ? AND end_date < ?", startOfMonth, endOfMonth)
+			query = query.Where("start_date < ?", endOfMonth).
+				Where("(end_date IS NULL OR end_date >= ?)", startOfMonth)
 		}
 	}
 
