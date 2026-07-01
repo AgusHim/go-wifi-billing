@@ -230,7 +230,9 @@ func (s *billService) GenerateMonthlyBills() error {
 	if err == nil {
 		now = time.Now().In(loc)
 	} else {
-		now = time.Now() // fallback
+		// Fallback ke UTC+7 jika tzdata tidak ada di sistem
+		loc = time.FixedZone("WIB", 7*60*60)
+		now = time.Now().In(loc)
 	}
 
 	currentMonth := int(now.Month())
