@@ -22,6 +22,13 @@ type Router struct {
 	Status            string         `json:"status" gorm:"default:unknown"`
 	LastSeenAt        *time.Time     `json:"last_seen_at"`
 	LastError         string         `json:"last_error"`
+	Identity          string         `json:"identity"`
+	RouterOSVersion   string         `json:"routeros_version"`
+	BoardName         string         `json:"board_name"`
+	Architecture      string         `json:"architecture"`
+	Uptime            string         `json:"uptime"`
+	LastLatencyMS     int64          `json:"last_latency_ms"`
+	LastCheckedAt     *time.Time     `json:"last_checked_at"`
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 	DeletedAt         gorm.DeletedAt `json:"deleted_at" gorm:"index"`

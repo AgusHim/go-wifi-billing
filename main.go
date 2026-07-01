@@ -53,6 +53,8 @@ func main() {
 	packageCtrl := controllers.NewPackageController(packageSvc)
 
 	routerRepo := repositories.NewRouterRepository(gormDB)
+	nocRepo := repositories.NewNOCRepository(gormDB)
+	alertRepo := repositories.NewAlertRepository(gormDB)
 	routerImportBatchRepo := repositories.NewRouterImportBatchRepository(gormDB)
 	routerImportItemRepo := repositories.NewRouterImportItemRepository(gormDB)
 	networkPlanRepo := repositories.NewNetworkPlanRepository(gormDB)
@@ -98,12 +100,18 @@ func main() {
 	)
 	routerCtrl := controllers.NewRouterController(routerSvc)
 	routerSvc.StartHealthCheckScheduler()
+	serviceAccountSvc := services.NewServiceAccountService(serviceAccountRepo, provisioningJobRepo, provisioningLogRepo, routerRepo, serviceStatusHistoryRepo)
+	serviceAccountCtrl := controllers.NewServiceAccountController(serviceAccountSvc)
+	nocSvc := services.NewNOCService(routerRepo, nocRepo, serviceAccountRepo, provisioningLogRepo, provisioningJobRepo)
+	alertSvc := services.NewAlertService(alertRepo, routerRepo, nocRepo)
+	nocActionSvc := services.NewNOCActionService(serviceAccountSvc, serviceAccountRepo, routerRepo, provisioningLogRepo)
+	nocCtrl := controllers.NewNOCController(nocSvc, alertSvc, nocActionSvc)
+	nocSvc.StartCollectorScheduler()
+	alertSvc.StartAlertScheduler()
 	provisioningSvc := services.NewProvisioningService(provisioningJobRepo, provisioningLogRepo)
 	provisioningCtrl := controllers.NewProvisioningController(provisioningSvc)
 	networkPlanSvc := services.NewNetworkPlanService(networkPlanRepo)
 	networkPlanCtrl := controllers.NewNetworkPlanController(networkPlanSvc)
-	serviceAccountSvc := services.NewServiceAccountService(serviceAccountRepo, provisioningJobRepo, provisioningLogRepo, routerRepo, serviceStatusHistoryRepo)
-	serviceAccountCtrl := controllers.NewServiceAccountController(serviceAccountSvc)
 	voucherSvc := services.NewVoucherService(voucherBatchRepo, voucherRepo, provisioningJobRepo, provisioningLogRepo, routerRepo)
 	voucherCtrl := controllers.NewVoucherController(voucherSvc)
 	whatsappCtrl := controllers.NewWhatsAppController(waSvc)
@@ -162,6 +170,7 @@ func main() {
 		complainCtrl,
 		paymentCtrl,
 		routerCtrl,
+		nocCtrl,
 		provisioningCtrl,
 		networkPlanCtrl,
 		serviceAccountCtrl,

@@ -18,6 +18,7 @@ func Setup(
 	complainCtrl *controllers.ComplainController,
 	paymentCtrl *controllers.PaymentController,
 	routerCtrl *controllers.RouterController,
+	nocCtrl *controllers.NOCController,
 	provisioningCtrl *controllers.ProvisioningController,
 	networkPlanCtrl *controllers.NetworkPlanController,
 	serviceAccountCtrl *controllers.ServiceAccountController,
@@ -41,6 +42,7 @@ func Setup(
 	complainCtrl.RegisterRoutes(app)
 	paymentCtrl.RegisterRoutes(app)
 	routerCtrl.RegisterRoutes(app)
+	nocCtrl.RegisterRoutes(app)
 	provisioningCtrl.RegisterRoutes(app)
 	networkPlanCtrl.RegisterRoutes(app)
 	serviceAccountCtrl.RegisterRoutes(app)

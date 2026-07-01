@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -77,8 +79,53 @@ func (c *MikrotikClient) Login(username, password string) error {
 	return nil
 }
 
+func (c *MikrotikClient) LoginWithTimeout(username, password string, timeout time.Duration) error {
+	if err := c.loginPlainWithTimeout(username, password, timeout); err == nil {
+		return nil
+	}
+
+	reply, err := c.RunWithTimeout(timeout, "/login")
+	if err != nil {
+		return err
+	}
+	if len(reply) == 0 || strings.TrimSpace(reply[0]["ret"]) == "" {
+		return ErrMikrotikAuth
+	}
+
+	challenge, err := hex.DecodeString(reply[0]["ret"])
+	if err != nil {
+		return err
+	}
+	hash := md5.Sum(append([]byte{0x00}, append([]byte(password), challenge...)...))
+	response := "00" + hex.EncodeToString(hash[:])
+
+	_, err = c.RunWithTimeout(
+		timeout,
+		"/login",
+		"=name="+username,
+		"=response="+response,
+	)
+	if err != nil {
+		return ErrMikrotikAuth
+	}
+	return nil
+}
+
 func (c *MikrotikClient) loginPlain(username, password string) error {
 	_, err := c.Run(
+		"/login",
+		"=name="+username,
+		"=password="+password,
+	)
+	if err != nil {
+		return ErrMikrotikAuth
+	}
+	return nil
+}
+
+func (c *MikrotikClient) loginPlainWithTimeout(username, password string, timeout time.Duration) error {
+	_, err := c.RunWithTimeout(
+		timeout,
 		"/login",
 		"=name="+username,
 		"=password="+password,
@@ -140,6 +187,61 @@ func (c *MikrotikClient) Run(words ...string) ([]map[string]string, error) {
 			}
 			return nil, errors.New(message)
 		}
+	}
+}
+
+func (c *MikrotikClient) RunWithTimeout(timeout time.Duration, words ...string) ([]map[string]string, error) {
+	if c == nil || c.conn == nil {
+		return nil, errors.New("mikrotik client is not connected")
+	}
+	if timeout > 0 {
+		if err := c.conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+			return nil, err
+		}
+		defer c.conn.SetDeadline(time.Time{})
+	}
+	return c.Run(words...)
+}
+
+func ClassifyMikrotikError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, ErrMikrotikAuth) {
+		return "auth_failed"
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout"
+	}
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return "timeout"
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) ||
+		errors.Is(err, syscall.ECONNRESET) {
+		return "unreachable"
+	}
+
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(message, "timeout"), strings.Contains(message, "deadline exceeded"):
+		return "timeout"
+	case strings.Contains(message, "cannot log in"), strings.Contains(message, "authentication"):
+		return "auth_failed"
+	case strings.Contains(message, "no route to host"),
+		strings.Contains(message, "connection refused"),
+		strings.Contains(message, "network is unreachable"),
+		strings.Contains(message, "host is down"):
+		return "unreachable"
+	case strings.Contains(message, "unsupported"):
+		return "unsupported"
+	case strings.Contains(message, "fatal"):
+		return "fatal"
+	default:
+		return "trap"
 	}
 }
 

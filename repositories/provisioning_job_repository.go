@@ -12,6 +12,7 @@ type ProvisioningJobRepository interface {
 	FindByID(id uuid.UUID) (*models.ProvisioningJob, error)
 	Update(job *models.ProvisioningJob) error
 	FindByEntity(entityType string, entityID uuid.UUID, limit int) ([]models.ProvisioningJob, error)
+	CountByStatus(status string) (int64, error)
 }
 
 type provisioningJobRepository struct {
@@ -56,4 +57,12 @@ func (r *provisioningJobRepository) FindByEntity(entityType string, entityID uui
 		Limit(limit).
 		Find(&jobs).Error
 	return jobs, err
+}
+
+func (r *provisioningJobRepository) CountByStatus(status string) (int64, error) {
+	var total int64
+	err := r.db.Model(&models.ProvisioningJob{}).
+		Where("LOWER(status) = LOWER(?)", status).
+		Count(&total).Error
+	return total, err
 }

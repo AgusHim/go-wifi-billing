@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,11 +15,15 @@ import (
 )
 
 type RouterTestResult struct {
-	Success   bool   `json:"success"`
-	Message   string `json:"message"`
-	LatencyMS int64  `json:"latency_ms"`
-	Identity  string `json:"identity"`
-	Version   string `json:"version"`
+	Success      bool   `json:"success"`
+	Message      string `json:"message"`
+	LatencyMS    int64  `json:"latency_ms"`
+	Identity     string `json:"identity"`
+	Version      string `json:"version"`
+	BoardName    string `json:"board_name"`
+	Architecture string `json:"architecture"`
+	Uptime       string `json:"uptime"`
+	ErrorCode    string `json:"error_code,omitempty"`
 }
 
 type RouterResourceResponse struct {
@@ -248,42 +253,61 @@ func (s *routerService) TestConnection(id uuid.UUID) (*RouterTestResult, error) 
 	}
 
 	start := time.Now()
-	client, err := lib.NewMikrotikClient(router.Host, router.Port, router.UseTLS, 5*time.Second)
+	runner, err := lib.NewMikrotikRunner(router.Host, router.Port, router.UseTLS, 5*time.Second, 5*time.Second)
 	if err != nil {
-		s.markRouterError(router, "unreachable", err.Error())
-		s.log(router.ID, "error", "test_connection", "connection failed")
+		code := lib.ClassifyMikrotikError(err)
+		s.markRouterError(router, code, err.Error())
+		s.log(router.ID, "error", "test_connection", fmt.Sprintf("connection failed: %s", code))
 		return nil, err
 	}
-	defer client.Close()
+	defer runner.Close()
 
-	if err := client.Login(router.Username, password); err != nil {
-		s.markRouterError(router, "auth_failed", err.Error())
-		s.log(router.ID, "error", "test_connection", "authentication failed")
-		return nil, err
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	login := runner.Login(ctx, router.Username, password)
+	s.logRouterCommand(router.ID, "test_connection", login)
+	if !login.Success {
+		s.markRouterError(router, login.ErrorCode, login.Err.Error())
+		return nil, login.Err
 	}
 
 	identity := ""
-	version := ""
-	if items, err := client.Run("/system/identity/print"); err == nil && len(items) > 0 {
-		identity = items[0]["name"]
+	resource := map[string]string{}
+	identityResult := runner.RunReadOnly(ctx, 2, "/system/identity/print")
+	s.logRouterCommand(router.ID, "test_connection", identityResult)
+	if identityResult.Success && len(identityResult.Items) > 0 {
+		identity = identityResult.Items[0]["name"]
 	}
-	if items, err := client.Run("/system/resource/print"); err == nil && len(items) > 0 {
-		version = items[0]["version"]
+	resourceResult := runner.RunReadOnly(ctx, 2, "/system/resource/print")
+	s.logRouterCommand(router.ID, "test_connection", resourceResult)
+	if resourceResult.Success && len(resourceResult.Items) > 0 {
+		resource = resourceResult.Items[0]
 	}
 
 	now := time.Now()
 	router.Status = "connected"
 	router.LastSeenAt = &now
+	router.LastCheckedAt = &now
 	router.LastError = ""
+	router.Identity = identity
+	router.RouterOSVersion = resource["version"]
+	router.BoardName = resource["board-name"]
+	router.Architecture = resource["architecture-name"]
+	router.Uptime = resource["uptime"]
+	router.LastLatencyMS = time.Since(start).Milliseconds()
 	_ = s.repo.Update(router)
 	s.log(router.ID, "info", "test_connection", "connection test succeeded")
 
 	return &RouterTestResult{
-		Success:   true,
-		Message:   "Connection successful",
-		LatencyMS: time.Since(start).Milliseconds(),
-		Identity:  identity,
-		Version:   version,
+		Success:      true,
+		Message:      "Connection successful",
+		LatencyMS:    router.LastLatencyMS,
+		Identity:     identity,
+		Version:      router.RouterOSVersion,
+		BoardName:    router.BoardName,
+		Architecture: router.Architecture,
+		Uptime:       router.Uptime,
 	}, nil
 }
 
@@ -304,37 +328,44 @@ func (s *routerService) FetchResources(id uuid.UUID, kind string) (*RouterResour
 		return nil, errors.New("router password is not configured")
 	}
 
-	client, err := lib.NewMikrotikClient(router.Host, router.Port, router.UseTLS, 5*time.Second)
+	runner, err := lib.NewMikrotikRunner(router.Host, router.Port, router.UseTLS, 5*time.Second, 5*time.Second)
 	if err != nil {
-		s.markRouterError(router, "unreachable", err.Error())
-		s.log(router.ID, "error", "fetch_resource", fmt.Sprintf("resource fetch failed for %s", kind))
+		code := lib.ClassifyMikrotikError(err)
+		s.markRouterError(router, code, err.Error())
+		s.log(router.ID, "error", "fetch_resource", fmt.Sprintf("resource fetch failed for %s: %s", kind, code))
 		return nil, err
 	}
-	defer client.Close()
+	defer runner.Close()
 
-	if err := client.Login(router.Username, password); err != nil {
-		s.markRouterError(router, "auth_failed", err.Error())
-		s.log(router.ID, "error", "fetch_resource", fmt.Sprintf("authentication failed for %s", kind))
-		return nil, err
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	login := runner.Login(ctx, router.Username, password)
+	s.logRouterCommand(router.ID, "fetch_resource", login)
+	if !login.Success {
+		s.markRouterError(router, login.ErrorCode, login.Err.Error())
+		return nil, login.Err
 	}
 
-	items, err := client.Run(command)
-	if err != nil {
-		s.markRouterError(router, router.Status, err.Error())
-		s.log(router.ID, "error", "fetch_resource", err.Error())
-		return nil, err
+	result := runner.RunReadOnly(ctx, 2, command)
+	s.logRouterCommand(router.ID, "fetch_resource", result)
+	if !result.Success {
+		s.markRouterError(router, result.ErrorCode, result.Err.Error())
+		return nil, result.Err
 	}
 
 	now := time.Now()
 	router.Status = "connected"
 	router.LastSeenAt = &now
+	router.LastCheckedAt = &now
+	router.LastLatencyMS = result.Duration.Milliseconds()
 	router.LastError = ""
 	_ = s.repo.Update(router)
 	s.log(router.ID, "info", "fetch_resource", fmt.Sprintf("resource fetch succeeded for %s", kind))
 
 	return &RouterResourceResponse{
 		Kind:  kind,
-		Items: items,
+		Items: result.Items,
 	}, nil
 }
 
@@ -533,18 +564,23 @@ func (s *routerService) buildImportPreview(id uuid.UUID, mode string) (*RouterIm
 		return nil, errors.New("router password is not configured")
 	}
 
-	client, err := lib.NewMikrotikClient(router.Host, router.Port, router.UseTLS, 5*time.Second)
+	runner, err := lib.NewMikrotikRunner(router.Host, router.Port, router.UseTLS, 5*time.Second, 5*time.Second)
 	if err != nil {
-		s.markRouterError(router, "unreachable", err.Error())
-		s.log(router.ID, "error", "preview_import", "connection failed")
+		code := lib.ClassifyMikrotikError(err)
+		s.markRouterError(router, code, err.Error())
+		s.log(router.ID, "error", "preview_import", fmt.Sprintf("connection failed: %s", code))
 		return nil, err
 	}
-	defer client.Close()
+	defer runner.Close()
 
-	if err := client.Login(router.Username, password); err != nil {
-		s.markRouterError(router, "auth_failed", err.Error())
-		s.log(router.ID, "error", "preview_import", "authentication failed")
-		return nil, err
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	login := runner.Login(ctx, router.Username, password)
+	s.logRouterCommand(router.ID, "preview_import", login)
+	if !login.Success {
+		s.markRouterError(router, login.ErrorCode, login.Err.Error())
+		return nil, login.Err
 	}
 
 	existingPlans, err := s.networkPlanRepo.FindAll()
@@ -561,29 +597,37 @@ func (s *routerService) buildImportPreview(id uuid.UUID, mode string) (*RouterIm
 	planLookup := make(map[string]RouterImportPlanCandidate)
 
 	if mode == "all" || mode == "pppoe" {
-		pppProfiles, err := client.Run("/ppp/profile/print")
-		if err != nil {
-			return nil, err
+		pppProfiles := runner.RunReadOnly(ctx, 2, "/ppp/profile/print")
+		s.logRouterCommand(router.ID, "preview_import", pppProfiles)
+		if !pppProfiles.Success {
+			s.markRouterError(router, pppProfiles.ErrorCode, pppProfiles.Err.Error())
+			return nil, pppProfiles.Err
 		}
-		pppSecrets, err := client.Run("/ppp/secret/print")
-		if err != nil {
-			return nil, err
+		pppSecrets := runner.RunReadOnly(ctx, 2, "/ppp/secret/print")
+		s.logRouterCommand(router.ID, "preview_import", pppSecrets)
+		if !pppSecrets.Success {
+			s.markRouterError(router, pppSecrets.ErrorCode, pppSecrets.Err.Error())
+			return nil, pppSecrets.Err
 		}
-		appendPlanCandidates(planCandidates, planLookup, buildPPPoEPlanCandidates(router, existingPlans, pppProfiles)...)
-		accountCandidates = append(accountCandidates, buildPPPoEAccountCandidates(router, existingAccounts, planLookup, pppSecrets)...)
+		appendPlanCandidates(planCandidates, planLookup, buildPPPoEPlanCandidates(router, existingPlans, pppProfiles.Items)...)
+		accountCandidates = append(accountCandidates, buildPPPoEAccountCandidates(router, existingAccounts, planLookup, pppSecrets.Items)...)
 	}
 
 	if mode == "all" || mode == "hotspot" {
-		hotspotProfiles, err := client.Run("/ip/hotspot/user/profile/print")
-		if err != nil {
-			return nil, err
+		hotspotProfiles := runner.RunReadOnly(ctx, 2, "/ip/hotspot/user/profile/print")
+		s.logRouterCommand(router.ID, "preview_import", hotspotProfiles)
+		if !hotspotProfiles.Success {
+			s.markRouterError(router, hotspotProfiles.ErrorCode, hotspotProfiles.Err.Error())
+			return nil, hotspotProfiles.Err
 		}
-		hotspotUsers, err := client.Run("/ip/hotspot/user/print")
-		if err != nil {
-			return nil, err
+		hotspotUsers := runner.RunReadOnly(ctx, 2, "/ip/hotspot/user/print")
+		s.logRouterCommand(router.ID, "preview_import", hotspotUsers)
+		if !hotspotUsers.Success {
+			s.markRouterError(router, hotspotUsers.ErrorCode, hotspotUsers.Err.Error())
+			return nil, hotspotUsers.Err
 		}
-		appendPlanCandidates(planCandidates, planLookup, buildHotspotPlanCandidates(router, existingPlans, hotspotProfiles)...)
-		accountCandidates = append(accountCandidates, buildHotspotAccountCandidates(router, existingAccounts, planLookup, hotspotUsers)...)
+		appendPlanCandidates(planCandidates, planLookup, buildHotspotPlanCandidates(router, existingPlans, hotspotProfiles.Items)...)
+		accountCandidates = append(accountCandidates, buildHotspotAccountCandidates(router, existingAccounts, planLookup, hotspotUsers.Items)...)
 	}
 
 	plans := make([]RouterImportPlanCandidate, 0, len(planCandidates))
@@ -613,6 +657,7 @@ func (s *routerService) buildImportPreview(id uuid.UUID, mode string) (*RouterIm
 	now := time.Now()
 	router.Status = "connected"
 	router.LastSeenAt = &now
+	router.LastCheckedAt = &now
 	router.LastError = ""
 	_ = s.repo.Update(router)
 	s.log(router.ID, "info", "preview_import", fmt.Sprintf("router import preview generated for mode %s", mode))
@@ -639,7 +684,7 @@ func validateRouterInput(input *models.Router, passwordRequired bool) error {
 		return errors.New("router host is required")
 	}
 	if input.Port <= 0 {
-		input.Port = 8728
+		input.Port = defaultMikrotikPort(input.UseTLS)
 	}
 	if strings.TrimSpace(input.APIType) == "" {
 		input.APIType = "routeros"
@@ -651,6 +696,13 @@ func validateRouterInput(input *models.Router, passwordRequired bool) error {
 		return errors.New("router password is required")
 	}
 	return nil
+}
+
+func defaultMikrotikPort(useTLS bool) int {
+	if useTLS {
+		return 8729
+	}
+	return 8728
 }
 
 func sanitizeRouter(router *models.Router) *models.Router {
@@ -983,9 +1035,34 @@ func (s *routerService) markRouterError(router *models.Router, status string, me
 	if router == nil {
 		return
 	}
+	now := time.Now()
 	router.Status = status
 	router.LastError = message
+	router.LastCheckedAt = &now
 	_ = s.repo.Update(router)
+}
+
+func (s *routerService) logRouterCommand(routerID uuid.UUID, action string, result *lib.MikrotikCommandResult) {
+	if result == nil {
+		return
+	}
+	level := "info"
+	status := "succeeded"
+	if !result.Success {
+		level = "error"
+		status = "failed"
+	}
+	message := fmt.Sprintf(
+		"router command %s: command=%s duration_ms=%d error_code=%s",
+		status,
+		result.Command,
+		result.Duration.Milliseconds(),
+		result.ErrorCode,
+	)
+	if result.Err != nil {
+		message = fmt.Sprintf("%s error=%s", message, result.Err.Error())
+	}
+	s.log(routerID, level, action, message)
 }
 
 func (s *routerService) log(routerID uuid.UUID, level string, action string, message string) {
