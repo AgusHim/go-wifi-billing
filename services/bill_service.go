@@ -224,7 +224,15 @@ func (s *billService) GenerateMonthlyBills() error {
 		return fmt.Errorf("failed to fetch subscriptions: %w", err)
 	}
 
-	now := time.Now()
+	// Pastikan kita menggunakan zona waktu Indonesia (WIB)
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	var now time.Time
+	if err == nil {
+		now = time.Now().In(loc)
+	} else {
+		now = time.Now() // fallback
+	}
+
 	currentMonth := int(now.Month())
 	currentYear := now.Year()
 
@@ -232,15 +240,15 @@ func (s *billService) GenerateMonthlyBills() error {
 
 	for _, sub := range subs {
 		// Cek apakah langganan baru mulai di masa depan (bulan/tahun lebih depan)
-		subStartMonth := time.Date(sub.StartDate.Year(), sub.StartDate.Month(), 1, 0, 0, 0, 0, time.Local)
-		billMonthStart := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, time.Local)
+		subStartMonth := time.Date(sub.StartDate.Year(), sub.StartDate.Month(), 1, 0, 0, 0, 0, loc)
+		billMonthStart := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, loc)
 		if billMonthStart.Before(subStartMonth) {
 			continue // Belum saatnya ditagih
 		}
 
 		// Cek apakah langganan sudah berakhir sebelum bulan tagihan ini
 		if !sub.EndDate.IsZero() {
-			subEndMonth := time.Date(sub.EndDate.Year(), sub.EndDate.Month(), 1, 0, 0, 0, 0, time.Local)
+			subEndMonth := time.Date(sub.EndDate.Year(), sub.EndDate.Month(), 1, 0, 0, 0, 0, loc)
 			if subEndMonth.Before(billMonthStart) {
 				continue // Sudah lewat masa aktifnya
 			}
@@ -257,9 +265,9 @@ func (s *billService) GenerateMonthlyBills() error {
 		}
 
 		billDate := now
-		dueDate := time.Date(currentYear, time.Month(currentMonth), sub.DueDay, 23, 59, 59, 0, time.Local)
+		dueDate := time.Date(currentYear, time.Month(currentMonth), sub.DueDay, 23, 59, 59, 0, loc)
 		if dueDate.Month() != time.Month(currentMonth) {
-			dueDate = time.Date(currentYear, time.Month(currentMonth)+1, 1, 23, 59, 59, 0, time.Local).AddDate(0, 0, -1)
+			dueDate = time.Date(currentYear, time.Month(currentMonth)+1, 1, 23, 59, 59, 0, loc).AddDate(0, 0, -1)
 		}
 
 		amount := sub.Package.Price
