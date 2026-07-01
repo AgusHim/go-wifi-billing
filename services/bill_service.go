@@ -240,20 +240,10 @@ func (s *billService) GenerateMonthlyBills() error {
 
 	log.Printf("Generating monthly bills for %d-%02d", currentYear, currentMonth)
 
+	billMonthStart := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, loc)
 	for _, sub := range subs {
-		// Cek apakah langganan baru mulai di masa depan (bulan/tahun lebih depan)
-		subStartMonth := time.Date(sub.StartDate.Year(), sub.StartDate.Month(), 1, 0, 0, 0, 0, loc)
-		billMonthStart := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, loc)
-		if billMonthStart.Before(subStartMonth) {
-			continue // Belum saatnya ditagih
-		}
-
-		// Cek apakah langganan sudah berakhir sebelum bulan tagihan ini
-		if !sub.EndDate.IsZero() {
-			subEndMonth := time.Date(sub.EndDate.Year(), sub.EndDate.Month(), 1, 0, 0, 0, 0, loc)
-			if subEndMonth.Before(billMonthStart) {
-				continue // Sudah lewat masa aktifnya
-			}
+		if !shouldGenerateBillForMonth(sub, billMonthStart, loc) {
+			continue
 		}
 
 		// Cek apakah sudah ada bill bulan ini
@@ -320,6 +310,34 @@ func (s *billService) GenerateMonthlyBills() error {
 	// }()
 
 	return nil
+}
+
+func shouldGenerateBillForMonth(sub models.Subscription, billMonthStart time.Time, loc *time.Location) bool {
+	billMonthStart = monthStartInLocation(billMonthStart, loc)
+
+	if !sub.StartDate.IsZero() {
+		subStartMonth := monthStartInLocation(sub.StartDate, loc)
+		if billMonthStart.Before(subStartMonth) {
+			return false
+		}
+	}
+
+	if !sub.EndDate.IsZero() {
+		subEndMonth := monthStartInLocation(sub.EndDate, loc)
+		if subEndMonth.Before(billMonthStart) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func monthStartInLocation(date time.Time, loc *time.Location) time.Time {
+	if loc == nil {
+		loc = time.Local
+	}
+	localDate := date.In(loc)
+	return time.Date(localDate.Year(), localDate.Month(), 1, 0, 0, 0, 0, loc)
 }
 
 func billMonthRange(year int, month int) (time.Time, time.Time) {
