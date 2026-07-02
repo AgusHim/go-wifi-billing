@@ -29,6 +29,7 @@ func Setup(
 	expenseCtrl *controllers.ExpenseController,
 	financeCtrl *controllers.FinanceController,
 	settingCtrl *controllers.SettingController,
+	inventoryCtrl *controllers.InventoryController,
 ) {
 
 	coverageCtrl.RegisterRoutes(app)
@@ -53,6 +54,7 @@ func Setup(
 	expenseCtrl.RegisterRoutes(app)
 	financeCtrl.RegisterRoutes(app)
 	settingCtrl.RegisterRoutes(app)
+	inventoryCtrl.RegisterRoutes(app)
 
 	// health
 	app.Get("/health", func(c *fiber.Ctx) error {

@@ -145,6 +145,10 @@ func main() {
 	settingSvc := services.NewSettingService(settingRepo)
 	settingCtrl := controllers.NewSettingController(settingSvc)
 
+	inventoryRepo := repositories.NewInventoryRepository(gormDB)
+	inventorySvc := services.NewInventoryService(inventoryRepo)
+	inventoryCtrl := controllers.NewInventoryController(inventorySvc)
+
 	// Setup Fiber
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
@@ -180,6 +184,7 @@ func main() {
 		expenseCtrl,
 		financeCtrl,
 		settingCtrl,
+		inventoryCtrl,
 	)
 
 	port := os.Getenv("PORT")
