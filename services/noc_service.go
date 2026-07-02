@@ -847,10 +847,11 @@ func filterAccountsByRouter(accounts []models.ServiceAccount, routerID uuid.UUID
 }
 
 func expectedAccountProfile(account *models.ServiceAccount) string {
-	if account == nil || account.NetworkPlan == nil {
+	plan := nocEffectiveNetworkPlan(account)
+	if plan == nil {
 		return ""
 	}
-	return strings.TrimSpace(account.NetworkPlan.MikrotikProfileName)
+	return strings.TrimSpace(plan.MikrotikProfileName)
 }
 
 func isBusinessActive(status string) bool {
@@ -885,6 +886,8 @@ func buildNOCCustomerRow(account models.ServiceAccount) NOCCustomerRow {
 		row.RouterName = account.Router.Name
 	} else if account.NetworkPlan != nil && account.NetworkPlan.Router != nil {
 		row.RouterName = account.NetworkPlan.Router.Name
+	} else if account.Subscription != nil && account.Subscription.NetworkPlan != nil && account.Subscription.NetworkPlan.Router != nil {
+		row.RouterName = account.Subscription.NetworkPlan.Router.Name
 	}
 	if account.Subscription != nil && account.Subscription.Package != nil {
 		row.PackageName = account.Subscription.Package.Name
@@ -929,6 +932,22 @@ func serviceAccountRouterID(account *models.ServiceAccount) *uuid.UUID {
 	}
 	if account.NetworkPlan != nil && account.NetworkPlan.RouterID != nil {
 		return account.NetworkPlan.RouterID
+	}
+	if account.Subscription != nil && account.Subscription.NetworkPlan != nil && account.Subscription.NetworkPlan.RouterID != nil {
+		return account.Subscription.NetworkPlan.RouterID
+	}
+	return nil
+}
+
+func nocEffectiveNetworkPlan(account *models.ServiceAccount) *models.NetworkPlan {
+	if account == nil {
+		return nil
+	}
+	if account.NetworkPlan != nil {
+		return account.NetworkPlan
+	}
+	if account.Subscription != nil && account.Subscription.NetworkPlan != nil {
+		return account.Subscription.NetworkPlan
 	}
 	return nil
 }

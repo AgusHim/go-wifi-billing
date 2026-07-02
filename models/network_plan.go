@@ -13,6 +13,7 @@ type NetworkPlan struct {
 	ServiceType         string         `json:"service_type"`
 	RouterID            *uuid.UUID     `json:"router_id" gorm:"type:uuid"`
 	MikrotikProfileName string         `json:"mikrotik_profile_name"`
+	IsolirProfileName   string         `json:"isolir_profile_name"`
 	AddressPool         string         `json:"address_pool"`
 	DownloadKbps        int            `json:"download_kbps"`
 	UploadKbps          int            `json:"upload_kbps"`

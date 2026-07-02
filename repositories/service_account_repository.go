@@ -32,6 +32,8 @@ func (r *serviceAccountRepository) FindAll() ([]models.ServiceAccount, error) {
 	err := r.db.
 		Preload("Router").
 		Preload("Subscription").
+		Preload("Subscription.NetworkPlan").
+		Preload("Subscription.NetworkPlan.Router").
 		Preload("Subscription.Customer").
 		Preload("Subscription.Customer.User").
 		Preload("NetworkPlan").
@@ -46,6 +48,8 @@ func (r *serviceAccountRepository) FindBySubscriptionID(subscriptionID string) (
 	err := r.db.
 		Preload("Router").
 		Preload("Subscription").
+		Preload("Subscription.NetworkPlan").
+		Preload("Subscription.NetworkPlan.Router").
 		Preload("Subscription.Customer").
 		Preload("Subscription.Customer.User").
 		Preload("NetworkPlan").
@@ -61,6 +65,8 @@ func (r *serviceAccountRepository) FindByID(id uuid.UUID) (*models.ServiceAccoun
 	err := r.db.
 		Preload("Router").
 		Preload("Subscription").
+		Preload("Subscription.NetworkPlan").
+		Preload("Subscription.NetworkPlan.Router").
 		Preload("Subscription.Customer").
 		Preload("Subscription.Customer.User").
 		Preload("NetworkPlan").

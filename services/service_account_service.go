@@ -332,6 +332,7 @@ func (s *serviceAccountService) expandSetOrRemoveWords(client *lib.MikrotikClien
 }
 
 func pppoeRequestWords(account *models.ServiceAccount, password string, action string) ([]string, error) {
+	plan := effectiveNetworkPlan(account)
 	switch action {
 	case "create_account":
 		words := []string{
@@ -340,23 +341,30 @@ func pppoeRequestWords(account *models.ServiceAccount, password string, action s
 			"=password=" + password,
 			"=service=pppoe",
 		}
-		if account.NetworkPlan != nil && strings.TrimSpace(account.NetworkPlan.MikrotikProfileName) != "" {
-			words = append(words, "=profile="+account.NetworkPlan.MikrotikProfileName)
+		if plan != nil && strings.TrimSpace(plan.MikrotikProfileName) != "" {
+			words = append(words, "=profile="+plan.MikrotikProfileName)
 		}
-		if account.NetworkPlan != nil && strings.TrimSpace(account.NetworkPlan.AddressPool) != "" {
-			words = append(words, "=remote-address="+account.NetworkPlan.AddressPool)
+		if plan != nil && strings.TrimSpace(plan.AddressPool) != "" {
+			words = append(words, "=remote-address="+plan.AddressPool)
 		}
 		return words, nil
 	case "suspend_account":
+		if plan != nil && strings.TrimSpace(plan.IsolirProfileName) != "" {
+			return []string{"/ppp/secret/set", "=disabled=no", "=profile=" + plan.IsolirProfileName}, nil
+		}
 		return []string{"/ppp/secret/set", "=disabled=yes"}, nil
 	case "unsuspend_account":
-		return []string{"/ppp/secret/set", "=disabled=no"}, nil
+		words := []string{"/ppp/secret/set", "=disabled=no"}
+		if plan != nil && strings.TrimSpace(plan.MikrotikProfileName) != "" {
+			words = append(words, "=profile="+plan.MikrotikProfileName)
+		}
+		return words, nil
 	case "terminate_account":
 		return []string{"/ppp/secret/remove"}, nil
 	case "change_plan":
 		words := []string{"/ppp/secret/set"}
-		if account.NetworkPlan != nil && strings.TrimSpace(account.NetworkPlan.MikrotikProfileName) != "" {
-			words = append(words, "=profile="+account.NetworkPlan.MikrotikProfileName)
+		if plan != nil && strings.TrimSpace(plan.MikrotikProfileName) != "" {
+			words = append(words, "=profile="+plan.MikrotikProfileName)
 		}
 		return words, nil
 	default:
@@ -365,6 +373,7 @@ func pppoeRequestWords(account *models.ServiceAccount, password string, action s
 }
 
 func hotspotRequestWords(account *models.ServiceAccount, password string, action string) ([]string, error) {
+	plan := effectiveNetworkPlan(account)
 	switch action {
 	case "create_account":
 		words := []string{
@@ -372,20 +381,27 @@ func hotspotRequestWords(account *models.ServiceAccount, password string, action
 			"=name=" + account.Username,
 			"=password=" + password,
 		}
-		if account.NetworkPlan != nil && strings.TrimSpace(account.NetworkPlan.MikrotikProfileName) != "" {
-			words = append(words, "=profile="+account.NetworkPlan.MikrotikProfileName)
+		if plan != nil && strings.TrimSpace(plan.MikrotikProfileName) != "" {
+			words = append(words, "=profile="+plan.MikrotikProfileName)
 		}
 		return words, nil
 	case "suspend_account":
+		if plan != nil && strings.TrimSpace(plan.IsolirProfileName) != "" {
+			return []string{"/ip/hotspot/user/set", "=disabled=no", "=profile=" + plan.IsolirProfileName}, nil
+		}
 		return []string{"/ip/hotspot/user/set", "=disabled=yes"}, nil
 	case "unsuspend_account":
-		return []string{"/ip/hotspot/user/set", "=disabled=no"}, nil
+		words := []string{"/ip/hotspot/user/set", "=disabled=no"}
+		if plan != nil && strings.TrimSpace(plan.MikrotikProfileName) != "" {
+			words = append(words, "=profile="+plan.MikrotikProfileName)
+		}
+		return words, nil
 	case "terminate_account":
 		return []string{"/ip/hotspot/user/remove"}, nil
 	case "change_plan":
 		words := []string{"/ip/hotspot/user/set"}
-		if account.NetworkPlan != nil && strings.TrimSpace(account.NetworkPlan.MikrotikProfileName) != "" {
-			words = append(words, "=profile="+account.NetworkPlan.MikrotikProfileName)
+		if plan != nil && strings.TrimSpace(plan.MikrotikProfileName) != "" {
+			words = append(words, "=profile="+plan.MikrotikProfileName)
 		}
 		return words, nil
 	default:
@@ -455,7 +471,23 @@ func resolveProvisioningRouter(account *models.ServiceAccount) (*models.Router, 
 	if account.NetworkPlan != nil && account.NetworkPlan.Router != nil {
 		return account.NetworkPlan.Router, nil
 	}
+	if account.Subscription != nil && account.Subscription.NetworkPlan != nil && account.Subscription.NetworkPlan.Router != nil {
+		return account.Subscription.NetworkPlan.Router, nil
+	}
 	return nil, errors.New("service account has no router mapping")
+}
+
+func effectiveNetworkPlan(account *models.ServiceAccount) *models.NetworkPlan {
+	if account == nil {
+		return nil
+	}
+	if account.NetworkPlan != nil {
+		return account.NetworkPlan
+	}
+	if account.Subscription != nil && account.Subscription.NetworkPlan != nil {
+		return account.Subscription.NetworkPlan
+	}
+	return nil
 }
 
 func provisioningEnabled() bool {

@@ -191,6 +191,8 @@ func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
 		Preload("Subscription").
+		Preload("Subscription.NetworkPlan").
+		Preload("Subscription.NetworkPlan.Router").
 		Preload("Subscription.Package").
 		Preload("Subscription.Customer").
 		Preload("Subscription.Customer.User").
@@ -201,7 +203,12 @@ func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID
 		query = query.Where("operational_status = ?", status)
 	}
 	if routerID != nil {
-		query = query.Where("router_id = ? OR network_plan_id IN (SELECT id FROM network_plans WHERE router_id = ?)", *routerID, *routerID)
+		query = query.Where(
+			"router_id = ? OR network_plan_id IN (SELECT id FROM network_plans WHERE router_id = ?) OR subscription_id IN (SELECT id FROM subscriptions WHERE network_plan_id IN (SELECT id FROM network_plans WHERE router_id = ?))",
+			*routerID,
+			*routerID,
+			*routerID,
+		)
 	}
 	err := query.Find(&items).Error
 	return items, err
@@ -385,13 +392,8 @@ func (r *nocRepository) ApplyRetention(now time.Time) error {
 func FindServiceAccountIDForSession(accounts []models.ServiceAccount, routerID uuid.UUID, serviceType string, username string, remoteID string) *uuid.UUID {
 	for i := range accounts {
 		account := accounts[i]
-		if account.RouterID != nil && *account.RouterID != routerID {
-			continue
-		}
-		if account.NetworkPlan != nil && account.NetworkPlan.RouterID != nil && *account.NetworkPlan.RouterID != routerID {
-			continue
-		}
-		if account.RouterID == nil && (account.NetworkPlan == nil || account.NetworkPlan.RouterID == nil) {
+		accountRouterID := ServiceAccountRouterIDForNOC(&account)
+		if accountRouterID == nil || *accountRouterID != routerID {
 			continue
 		}
 		if !equalFoldTrim(account.ServiceType, serviceType) {
@@ -401,6 +403,22 @@ func FindServiceAccountIDForSession(accounts []models.ServiceAccount, routerID u
 			id := account.ID
 			return &id
 		}
+	}
+	return nil
+}
+
+func ServiceAccountRouterIDForNOC(account *models.ServiceAccount) *uuid.UUID {
+	if account == nil {
+		return nil
+	}
+	if account.RouterID != nil {
+		return account.RouterID
+	}
+	if account.NetworkPlan != nil && account.NetworkPlan.RouterID != nil {
+		return account.NetworkPlan.RouterID
+	}
+	if account.Subscription != nil && account.Subscription.NetworkPlan != nil && account.Subscription.NetworkPlan.RouterID != nil {
+		return account.Subscription.NetworkPlan.RouterID
 	}
 	return nil
 }

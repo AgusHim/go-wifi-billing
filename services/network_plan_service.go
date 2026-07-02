@@ -84,6 +84,7 @@ func (s *networkPlanService) Update(id uuid.UUID, input *models.NetworkPlan) (*m
 	existing.ServiceType = input.ServiceType
 	existing.RouterID = input.RouterID
 	existing.MikrotikProfileName = input.MikrotikProfileName
+	existing.IsolirProfileName = input.IsolirProfileName
 	existing.AddressPool = input.AddressPool
 	existing.DownloadKbps = input.DownloadKbps
 	existing.UploadKbps = input.UploadKbps

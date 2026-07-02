@@ -48,6 +48,8 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 			return tx.Order("subscriptions.created_at DESC")
 		}).
 		Preload("Subscriptions.Package").
+		Preload("Subscriptions.NetworkPlan").
+		Preload("Subscriptions.NetworkPlan.Router").
 		Preload("Subscriptions.ServiceAccounts").
 		Preload("Subscriptions.ServiceAccounts.Router").
 		Preload("Subscriptions.ServiceAccounts.NetworkPlan").
@@ -94,6 +96,8 @@ func (r *customerRepository) FindByID(id uuid.UUID) (*models.Customer, error) {
 			return tx.Order("subscriptions.created_at DESC")
 		}).
 		Preload("Subscriptions.Package").
+		Preload("Subscriptions.NetworkPlan").
+		Preload("Subscriptions.NetworkPlan.Router").
 		Preload("Subscriptions.ServiceAccounts").
 		Preload("Subscriptions.ServiceAccounts.Router").
 		Preload("Subscriptions.ServiceAccounts.NetworkPlan").
@@ -114,6 +118,8 @@ func (r *customerRepository) FindByUserID(userID uuid.UUID) (*models.Customer, e
 			return tx.Order("subscriptions.created_at DESC")
 		}).
 		Preload("Subscriptions.Package").
+		Preload("Subscriptions.NetworkPlan").
+		Preload("Subscriptions.NetworkPlan.Router").
 		Preload("Subscriptions.ServiceAccounts").
 		Preload("Subscriptions.ServiceAccounts.Router").
 		Preload("Subscriptions.ServiceAccounts.NetworkPlan").
