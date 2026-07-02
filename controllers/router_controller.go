@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"strings"
+
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -80,7 +82,7 @@ func (c *RouterController) Update(ctx *fiber.Ctx) error {
 }
 
 func (c *RouterController) TestConnection(ctx *fiber.Ctx) error {
-	id, err := uuid.Parse(ctx.Params("id"))
+	id, err := parseRouterIdentifier(ctx)
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid ID"})
 	}
@@ -89,6 +91,17 @@ func (c *RouterController) TestConnection(ctx *fiber.Ctx) error {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": result, "message": "Router connection tested"})
+}
+
+func parseRouterIdentifier(ctx *fiber.Ctx) (uuid.UUID, error) {
+	raw := strings.TrimSpace(ctx.Params("id"))
+	if raw == "" {
+		raw = strings.TrimSpace(ctx.Query("router_id"))
+	}
+	if raw == "" {
+		raw = strings.TrimSpace(ctx.Query("id"))
+	}
+	return uuid.Parse(raw)
 }
 
 func (c *RouterController) RunHealthCheckAll(ctx *fiber.Ctx) error {

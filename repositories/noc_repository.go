@@ -210,7 +210,13 @@ func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID
 func (r *nocRepository) CountOnlineSessionsSince(since time.Time) (int64, error) {
 	var total int64
 	err := r.db.Model(&models.ServiceSessionSnapshot{}).
-		Where("online = ? AND collected_at >= ?", true, since).
+		Where("online = ? AND collected_at >= ? AND collected_at = (?)", true, since,
+			r.db.Model(&models.ServiceSessionSnapshot{}).
+				Select("MAX(latest.collected_at)").
+				Table("service_session_snapshots AS latest").
+				Where("latest.router_id = service_session_snapshots.router_id").
+				Where("latest.deleted_at IS NULL"),
+		).
 		Distinct("router_id", "service_type", "username").
 		Count(&total).Error
 	return total, err
@@ -219,7 +225,13 @@ func (r *nocRepository) CountOnlineSessionsSince(since time.Time) (int64, error)
 func (r *nocRepository) CountOnlineSessionsByTypeSince(serviceType string, since time.Time) (int64, error) {
 	var total int64
 	err := r.db.Model(&models.ServiceSessionSnapshot{}).
-		Where("online = ? AND LOWER(service_type) = LOWER(?) AND collected_at >= ?", true, serviceType, since).
+		Where("online = ? AND LOWER(service_type) = LOWER(?) AND collected_at >= ? AND collected_at = (?)", true, serviceType, since,
+			r.db.Model(&models.ServiceSessionSnapshot{}).
+				Select("MAX(latest.collected_at)").
+				Table("service_session_snapshots AS latest").
+				Where("latest.router_id = service_session_snapshots.router_id").
+				Where("latest.deleted_at IS NULL"),
+		).
 		Distinct("router_id", "service_type", "username").
 		Count(&total).Error
 	return total, err
