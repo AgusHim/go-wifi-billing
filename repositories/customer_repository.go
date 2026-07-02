@@ -48,6 +48,9 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 			return tx.Order("subscriptions.created_at DESC")
 		}).
 		Preload("Subscriptions.Package").
+		Preload("Subscriptions.ServiceAccounts").
+		Preload("Subscriptions.ServiceAccounts.Router").
+		Preload("Subscriptions.ServiceAccounts.NetworkPlan").
 		Joins("LEFT JOIN users ON users.id = customers.user_id")
 
 	// Pencarian di User.Name atau User.Email
@@ -87,6 +90,13 @@ func (r *customerRepository) FindByID(id uuid.UUID) (*models.Customer, error) {
 		Preload("Coverage").
 		Preload("Odc").
 		Preload("Odp").
+		Preload("Subscriptions", func(tx *gorm.DB) *gorm.DB {
+			return tx.Order("subscriptions.created_at DESC")
+		}).
+		Preload("Subscriptions.Package").
+		Preload("Subscriptions.ServiceAccounts").
+		Preload("Subscriptions.ServiceAccounts.Router").
+		Preload("Subscriptions.ServiceAccounts.NetworkPlan").
 		First(&customer, "id = ?", id).Error
 	return &customer, err
 }
@@ -100,6 +110,13 @@ func (r *customerRepository) FindByUserID(userID uuid.UUID) (*models.Customer, e
 		Preload("Coverage").
 		Preload("Odc").
 		Preload("Odp").
+		Preload("Subscriptions", func(tx *gorm.DB) *gorm.DB {
+			return tx.Order("subscriptions.created_at DESC")
+		}).
+		Preload("Subscriptions.Package").
+		Preload("Subscriptions.ServiceAccounts").
+		Preload("Subscriptions.ServiceAccounts.Router").
+		Preload("Subscriptions.ServiceAccounts.NetworkPlan").
 		First(&customer, "user_id = ?", userID).Error
 
 	if err != nil {
