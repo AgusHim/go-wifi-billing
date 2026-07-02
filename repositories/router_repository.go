@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type RouterRepository interface {
@@ -39,7 +40,7 @@ func (r *routerRepository) FindByID(id uuid.UUID) (*models.Router, error) {
 }
 
 func (r *routerRepository) Update(router *models.Router) error {
-	return r.db.Save(router).Error
+	return r.db.Omit(clause.Associations).Save(router).Error
 }
 
 func (r *routerRepository) Delete(id uuid.UUID) error {

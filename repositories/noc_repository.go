@@ -85,7 +85,7 @@ func (r *nocRepository) UpsertOpenReconciliationFinding(finding *models.Reconcil
 		existing.RemoteProfileName = finding.RemoteProfileName
 		existing.RemoteStatus = finding.RemoteStatus
 		existing.DetectedAt = finding.DetectedAt
-		return r.db.Save(&existing).Error
+		return r.db.Omit(clause.Associations).Save(&existing).Error
 	}
 	if err != gorm.ErrRecordNotFound {
 		return err

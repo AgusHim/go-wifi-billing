@@ -6,6 +6,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ComplainRepository interface {
@@ -56,7 +57,7 @@ func (r *complainRepository) GetAll() ([]models.Complain, error) {
 }
 
 func (r *complainRepository) Update(complain *models.Complain) error {
-	return r.db.Omit("Customer", "Subscription", "Technician").Save(complain).Error
+	return r.db.Omit(clause.Associations).Save(complain).Error
 }
 
 func (r *complainRepository) Delete(id uuid.UUID) error {

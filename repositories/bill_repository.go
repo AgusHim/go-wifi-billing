@@ -7,6 +7,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type BillRepository interface {
@@ -153,7 +154,7 @@ func (r *billRepository) Create(bill *models.Bill) error {
 }
 
 func (r *billRepository) Update(bill *models.Bill) error {
-	return r.db.Omit("Subscription", "Customer", "Customer.User").Save(bill).Error
+	return r.db.Omit(clause.Associations).Save(bill).Error
 }
 
 func (r *billRepository) Delete(id string) error {

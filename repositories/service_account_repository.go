@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ServiceAccountRepository interface {
@@ -76,7 +77,7 @@ func (r *serviceAccountRepository) FindByID(id uuid.UUID) (*models.ServiceAccoun
 }
 
 func (r *serviceAccountRepository) Update(account *models.ServiceAccount) error {
-	return r.db.Omit("Router", "Subscription", "NetworkPlan").Save(account).Error
+	return r.db.Omit(clause.Associations).Save(account).Error
 }
 
 func (r *serviceAccountRepository) Delete(id uuid.UUID) error {

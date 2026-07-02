@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type VoucherBatchRepository interface {
@@ -49,5 +50,5 @@ func (r *voucherBatchRepository) FindByID(id uuid.UUID) (*models.VoucherBatch, e
 }
 
 func (r *voucherBatchRepository) Update(batch *models.VoucherBatch) error {
-	return r.db.Save(batch).Error
+	return r.db.Omit(clause.Associations).Save(batch).Error
 }

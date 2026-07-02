@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PackageRepository interface {
@@ -39,7 +40,7 @@ func (r *packageRepository) FindByID(id uuid.UUID) (*models.Package, error) {
 }
 
 func (r *packageRepository) Update(pkg *models.Package) error {
-	return r.db.Save(pkg).Error
+	return r.db.Omit(clause.Associations).Save(pkg).Error
 }
 
 func (r *packageRepository) Delete(id uuid.UUID) error {

@@ -6,6 +6,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type SubscriptionRepository interface {
@@ -212,7 +213,7 @@ func (r *subscriptionRepository) FindByCustomerID(customerID uuid.UUID) (*models
 }
 
 func (r *subscriptionRepository) Update(subscription *models.Subscription) error {
-	return r.db.Omit("Customer", "Customer.User", "Package", "NetworkPlan", "RenewalHistories", "ServiceAccounts").Save(subscription).Error
+	return r.db.Omit(clause.Associations).Save(subscription).Error
 }
 
 func (r *subscriptionRepository) Delete(id uuid.UUID) error {

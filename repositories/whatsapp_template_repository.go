@@ -6,6 +6,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type WhatsAppTemplateRepository interface {
@@ -48,7 +49,7 @@ func (r *whatsAppTemplateRepository) GetByID(id uuid.UUID) (*models.WhatsAppTemp
 }
 
 func (r *whatsAppTemplateRepository) Update(template *models.WhatsAppTemplate) error {
-	return r.db.Save(template).Error
+	return r.db.Omit(clause.Associations).Save(template).Error
 }
 
 func (r *whatsAppTemplateRepository) Delete(id uuid.UUID) error {

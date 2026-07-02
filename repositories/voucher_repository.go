@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type VoucherRepository interface {
@@ -63,5 +64,5 @@ func (r *voucherRepository) FindByCode(code string) (*models.Voucher, error) {
 }
 
 func (r *voucherRepository) Update(voucher *models.Voucher) error {
-	return r.db.Save(voucher).Error
+	return r.db.Omit(clause.Associations).Save(voucher).Error
 }

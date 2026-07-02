@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CustomerRepository interface {
@@ -133,7 +134,7 @@ func (r *customerRepository) FindByUserID(userID uuid.UUID) (*models.Customer, e
 }
 
 func (r *customerRepository) Update(customer *models.Customer) error {
-	return r.db.Omit("User", "Coverage", "Odc", "Odp", "Admin").Save(customer).Error
+	return r.db.Omit(clause.Associations).Save(customer).Error
 }
 
 func (r *customerRepository) Delete(id uuid.UUID) error {

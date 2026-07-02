@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type NetworkPlanRepository interface {
@@ -39,7 +40,7 @@ func (r *networkPlanRepository) FindByID(id uuid.UUID) (*models.NetworkPlan, err
 }
 
 func (r *networkPlanRepository) Update(plan *models.NetworkPlan) error {
-	return r.db.Save(plan).Error
+	return r.db.Omit(clause.Associations).Save(plan).Error
 }
 
 func (r *networkPlanRepository) Delete(id uuid.UUID) error {

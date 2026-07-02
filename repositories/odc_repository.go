@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type OdcRepository interface {
@@ -39,7 +40,7 @@ func (r *odcRepository) FindByID(id uuid.UUID) (*models.Odc, error) {
 }
 
 func (r *odcRepository) Update(odc *models.Odc) error {
-	return r.db.Save(odc).Error
+	return r.db.Omit(clause.Associations).Save(odc).Error
 }
 
 func (r *odcRepository) Delete(id uuid.UUID) error {

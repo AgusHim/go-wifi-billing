@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/Agushim/go_wifi_billing/models"
 )
@@ -86,7 +87,7 @@ func (r *userRepository) GetAll(page int, limit int, roles []string, search stri
 }
 
 func (r *userRepository) Update(user *models.User) error {
-	return r.db.Save(user).Error
+	return r.db.Omit(clause.Associations).Save(user).Error
 }
 
 func (r *userRepository) Delete(id uuid.UUID) error {

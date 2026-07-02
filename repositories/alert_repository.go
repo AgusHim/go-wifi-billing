@@ -6,6 +6,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type AlertRepository interface {
@@ -68,7 +69,7 @@ func (r *alertRepository) UpsertOpenAlert(alert *models.AlertEvent) error {
 		existing.Title = alert.Title
 		existing.Description = alert.Description
 		existing.LastSeenAt = alert.LastSeenAt
-		return r.db.Save(&existing).Error
+		return r.db.Omit(clause.Associations).Save(&existing).Error
 	}
 	if err != gorm.ErrRecordNotFound {
 		return err

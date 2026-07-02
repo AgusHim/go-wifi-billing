@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ProvisioningJobRepository interface {
@@ -43,7 +44,7 @@ func (r *provisioningJobRepository) FindByID(id uuid.UUID) (*models.Provisioning
 }
 
 func (r *provisioningJobRepository) Update(job *models.ProvisioningJob) error {
-	return r.db.Save(job).Error
+	return r.db.Omit(clause.Associations).Save(job).Error
 }
 
 func (r *provisioningJobRepository) FindByEntity(entityType string, entityID uuid.UUID, limit int) ([]models.ProvisioningJob, error) {

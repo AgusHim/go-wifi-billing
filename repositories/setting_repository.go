@@ -4,6 +4,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type SettingRepository interface {
@@ -54,7 +55,7 @@ func (r *settingRepository) UpdateOrCreate(key string, value string) (*models.Se
 	}
 
 	setting.Value = value
-	if err := r.db.Save(&setting).Error; err != nil {
+	if err := r.db.Omit(clause.Associations).Save(&setting).Error; err != nil {
 		return nil, err
 	}
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type OdpRepository interface {
@@ -40,7 +41,7 @@ func (r *odpRepository) FindByID(id uuid.UUID) (*models.Odp, error) {
 }
 
 func (r *odpRepository) Update(odp *models.Odp) error {
-	return r.db.Save(odp).Error
+	return r.db.Omit(clause.Associations).Save(odp).Error
 }
 
 func (r *odpRepository) Delete(id uuid.UUID) error {

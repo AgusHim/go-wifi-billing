@@ -6,6 +6,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ExpenseRepository interface {
@@ -59,7 +60,7 @@ func (r *expenseRepository) Create(expense *models.Expense) error {
 }
 
 func (r *expenseRepository) Update(expense *models.Expense) error {
-	return r.db.Save(expense).Error
+	return r.db.Omit(clause.Associations).Save(expense).Error
 }
 
 func (r *expenseRepository) Delete(id string) error {

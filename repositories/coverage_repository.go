@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/Agushim/go_wifi_billing/models"
 )
@@ -49,7 +50,7 @@ func (r *coverageRepository) GetAll() ([]models.Coverage, error) {
 }
 
 func (r *coverageRepository) Update(coverage *models.Coverage) error {
-	return r.db.Save(coverage).Error
+	return r.db.Omit(clause.Associations).Save(coverage).Error
 }
 
 func (r *coverageRepository) Delete(id uuid.UUID) error {
