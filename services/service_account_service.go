@@ -49,7 +49,7 @@ func NewServiceAccountService(
 }
 
 func (s *serviceAccountService) Create(input *models.ServiceAccount) (*models.ServiceAccount, error) {
-	if err := validateServiceAccount(input, true); err != nil {
+	if err := validateServiceAccount(input, false); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(input.Password) != "" {
