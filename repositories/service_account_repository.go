@@ -13,6 +13,7 @@ type ServiceAccountRepository interface {
 	FindBySubscriptionID(subscriptionID string) ([]models.ServiceAccount, error)
 	FindByID(id uuid.UUID) (*models.ServiceAccount, error)
 	Update(account *models.ServiceAccount) error
+	ClearNetworkPlanFallbacksBySubscriptionID(subscriptionID uuid.UUID) error
 	Delete(id uuid.UUID) error
 }
 
@@ -81,6 +82,12 @@ func (r *serviceAccountRepository) FindByID(id uuid.UUID) (*models.ServiceAccoun
 
 func (r *serviceAccountRepository) Update(account *models.ServiceAccount) error {
 	return r.db.Omit(clause.Associations).Save(account).Error
+}
+
+func (r *serviceAccountRepository) ClearNetworkPlanFallbacksBySubscriptionID(subscriptionID uuid.UUID) error {
+	return r.db.Model(&models.ServiceAccount{}).
+		Where("subscription_id = ? AND network_plan_id IS NOT NULL", subscriptionID).
+		Updates(map[string]interface{}{"network_plan_id": nil}).Error
 }
 
 func (r *serviceAccountRepository) Delete(id uuid.UUID) error {

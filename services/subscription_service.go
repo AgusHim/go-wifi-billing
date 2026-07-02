@@ -22,16 +22,23 @@ type SubscriptionService interface {
 }
 
 type subscriptionService struct {
-	repo            repositories.SubscriptionRepository
-	customerRepo    repositories.CustomerRepository
-	networkPlanRepo repositories.NetworkPlanRepository
+	repo               repositories.SubscriptionRepository
+	customerRepo       repositories.CustomerRepository
+	networkPlanRepo    repositories.NetworkPlanRepository
+	serviceAccountRepo repositories.ServiceAccountRepository
 }
 
-func NewSubscriptionService(repo repositories.SubscriptionRepository, customerRepo repositories.CustomerRepository, networkPlanRepo repositories.NetworkPlanRepository) SubscriptionService {
+func NewSubscriptionService(
+	repo repositories.SubscriptionRepository,
+	customerRepo repositories.CustomerRepository,
+	networkPlanRepo repositories.NetworkPlanRepository,
+	serviceAccountRepo repositories.ServiceAccountRepository,
+) SubscriptionService {
 	return &subscriptionService{
-		repo:            repo,
-		customerRepo:    customerRepo,
-		networkPlanRepo: networkPlanRepo,
+		repo:               repo,
+		customerRepo:       customerRepo,
+		networkPlanRepo:    networkPlanRepo,
+		serviceAccountRepo: serviceAccountRepo,
 	}
 }
 
@@ -126,6 +133,15 @@ func (s *subscriptionService) Update(id uuid.UUID, input *models.Subscription) (
 	err = s.repo.Update(existing)
 	if err != nil {
 		return nil, err
+	}
+	if existing.NetworkPlanID != nil && s.serviceAccountRepo != nil {
+		if err := s.serviceAccountRepo.ClearNetworkPlanFallbacksBySubscriptionID(existing.ID); err != nil {
+			return nil, err
+		}
+		existing, err = s.repo.FindByID(id)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return sanitizeSubscription(existing), nil

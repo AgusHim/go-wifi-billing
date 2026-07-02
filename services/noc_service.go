@@ -76,6 +76,10 @@ type NOCMetrics struct {
 	LastCollectorSucceeded    int        `json:"last_collector_succeeded"`
 	LastCollectorFailed       int        `json:"last_collector_failed"`
 	LastCollectorTotalRouters int        `json:"last_collector_total_routers"`
+	CollectorRunning          bool       `json:"collector_running"`
+	CollectorCanRun           bool       `json:"collector_can_run"`
+	CollectorMinIntervalSec   int64      `json:"collector_min_interval_seconds"`
+	CollectorNextAllowedAt    *time.Time `json:"collector_next_allowed_at,omitempty"`
 	CollectorSuccessTotal     int64      `json:"collector_success_total"`
 	CollectorFailureTotal     int64      `json:"collector_failure_total"`
 	MikrotikCommandCount      int64      `json:"mikrotik_command_count"`
@@ -134,6 +138,7 @@ type nocService struct {
 	serviceAccountRepo repositories.ServiceAccountRepository
 	logRepo            repositories.ProvisioningLogRepository
 	jobRepo            repositories.ProvisioningJobRepository
+	collectMu          sync.Mutex
 	metricsMu          sync.Mutex
 	metrics            NOCMetrics
 }
@@ -155,10 +160,11 @@ func NewNOCService(
 }
 
 func (s *nocService) CollectAll() (*NOCCollectionSummary, error) {
-	startedAt := time.Now()
-	s.metricsMu.Lock()
-	s.metrics.LastCollectorStartedAt = &startedAt
-	s.metricsMu.Unlock()
+	startedAt, minInterval, err := s.beginCollection()
+	if err != nil {
+		return nil, err
+	}
+	defer s.finishCollectionAttempt(minInterval)
 
 	routers, err := s.routerRepo.FindAll()
 	if err != nil {
@@ -611,6 +617,7 @@ func (s *nocService) GetMetrics() (*NOCMetrics, error) {
 	s.metricsMu.Lock()
 	metrics := s.metrics
 	s.metricsMu.Unlock()
+	enrichCollectorAvailability(&metrics, time.Now(), resolveNOCCollectorMinInterval())
 
 	if s.jobRepo != nil {
 		pending, err := s.jobRepo.CountByStatus("pending")
@@ -620,6 +627,72 @@ func (s *nocService) GetMetrics() (*NOCMetrics, error) {
 		metrics.ProvisioningQueueSize = pending
 	}
 	return &metrics, nil
+}
+
+func (s *nocService) beginCollection() (time.Time, time.Duration, error) {
+	if !s.collectMu.TryLock() {
+		return time.Time{}, 0, errors.New("NOC collector is already running")
+	}
+
+	minInterval := resolveNOCCollectorMinInterval()
+	startedAt := time.Now()
+	s.metricsMu.Lock()
+	if s.metrics.LastCollectorFinishedAt != nil {
+		nextAllowedAt := s.metrics.LastCollectorFinishedAt.Add(minInterval)
+		if startedAt.Before(nextAllowedAt) {
+			s.metrics.CollectorCanRun = false
+			s.metrics.CollectorRunning = false
+			s.metrics.CollectorMinIntervalSec = int64(minInterval.Seconds())
+			s.metrics.CollectorNextAllowedAt = &nextAllowedAt
+			s.metricsMu.Unlock()
+			s.collectMu.Unlock()
+			return time.Time{}, 0, fmt.Errorf("NOC collector cooldown active until %s", nextAllowedAt.Format(time.RFC3339))
+		}
+	}
+	s.metrics.LastCollectorStartedAt = &startedAt
+	s.metrics.CollectorRunning = true
+	s.metrics.CollectorCanRun = false
+	s.metrics.CollectorMinIntervalSec = int64(minInterval.Seconds())
+	s.metrics.CollectorNextAllowedAt = nil
+	s.metricsMu.Unlock()
+
+	return startedAt, minInterval, nil
+}
+
+func (s *nocService) finishCollectionAttempt(minInterval time.Duration) {
+	finishedAt := time.Now()
+	nextAllowedAt := finishedAt.Add(minInterval)
+
+	s.metricsMu.Lock()
+	if s.metrics.LastCollectorFinishedAt == nil {
+		s.metrics.LastCollectorFinishedAt = &finishedAt
+	}
+	s.metrics.CollectorRunning = false
+	s.metrics.CollectorCanRun = time.Now().After(nextAllowedAt)
+	s.metrics.CollectorMinIntervalSec = int64(minInterval.Seconds())
+	s.metrics.CollectorNextAllowedAt = &nextAllowedAt
+	s.metricsMu.Unlock()
+
+	s.collectMu.Unlock()
+}
+
+func enrichCollectorAvailability(metrics *NOCMetrics, now time.Time, minInterval time.Duration) {
+	if metrics == nil {
+		return
+	}
+	metrics.CollectorMinIntervalSec = int64(minInterval.Seconds())
+	if metrics.CollectorRunning {
+		metrics.CollectorCanRun = false
+		return
+	}
+	if metrics.LastCollectorFinishedAt == nil {
+		metrics.CollectorCanRun = true
+		metrics.CollectorNextAllowedAt = nil
+		return
+	}
+	nextAllowedAt := metrics.LastCollectorFinishedAt.Add(minInterval)
+	metrics.CollectorNextAllowedAt = &nextAllowedAt
+	metrics.CollectorCanRun = !now.Before(nextAllowedAt)
 }
 
 func (s *nocService) StartCollectorScheduler() {
@@ -1077,6 +1150,18 @@ func resolveNOCCollectorInterval() time.Duration {
 	duration, err := time.ParseDuration(value)
 	if err != nil || duration <= 0 {
 		return 5 * time.Minute
+	}
+	return duration
+}
+
+func resolveNOCCollectorMinInterval() time.Duration {
+	value := strings.TrimSpace(os.Getenv("NOC_COLLECTOR_MIN_INTERVAL"))
+	if value == "" {
+		return time.Minute
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		return time.Minute
 	}
 	return duration
 }

@@ -74,7 +74,7 @@ func main() {
 
 	subscriptionRepo := repositories.NewSubscriptionRepository(gormDB)
 	customerRepo := repositories.NewCustomerRepository(gormDB)
-	subscriptionSvc := services.NewSubscriptionService(subscriptionRepo, customerRepo, networkPlanRepo)
+	subscriptionSvc := services.NewSubscriptionService(subscriptionRepo, customerRepo, networkPlanRepo, serviceAccountRepo)
 	customerSvc := services.NewCustomerService(customerRepo, userSvc, subscriptionSvc)
 	customerCtrl := controllers.NewCustomerController(customerSvc)
 
