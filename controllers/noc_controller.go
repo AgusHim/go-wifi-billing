@@ -116,8 +116,10 @@ func (c *NOCController) GetRouterInterfaces(ctx *fiber.Ctx) error {
 func (c *NOCController) GetCustomers(ctx *fiber.Ctx) error {
 	status := ctx.Query("status", "")
 	routerID := ctx.Query("router_id", "")
+	coverageID := ctx.Query("coverage_id", "")
+	packageID := ctx.Query("package_id", "")
 	limit := ctx.QueryInt("limit", 200)
-	result, err := c.service.GetCustomers(status, routerID, limit)
+	result, err := c.service.GetCustomers(status, routerID, coverageID, packageID, limit)
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

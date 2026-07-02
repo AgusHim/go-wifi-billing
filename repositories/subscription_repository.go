@@ -59,6 +59,7 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 		Preload("NetworkPlan.Router").
 		Preload("ServiceAccounts").
 		Preload("ServiceAccounts.Router").
+		Preload("ServiceAccounts.NetworkPlan").
 		Preload("RenewalHistories").
 		Preload("RenewalHistories.Bill").
 		Preload("RenewalHistories.Payment")
@@ -144,6 +145,7 @@ func (r *subscriptionRepository) FindForBill(customerID *string, status *string,
 		Preload("NetworkPlan.Router").
 		Preload("ServiceAccounts").
 		Preload("ServiceAccounts.Router").
+		Preload("ServiceAccounts.NetworkPlan").
 		Preload("RenewalHistories").
 		Preload("RenewalHistories.Bill").
 		Preload("RenewalHistories.Payment").
@@ -176,6 +178,7 @@ func (r *subscriptionRepository) FindByID(id uuid.UUID) (*models.Subscription, e
 		Preload("NetworkPlan.Router").
 		Preload("ServiceAccounts").
 		Preload("ServiceAccounts.Router").
+		Preload("ServiceAccounts.NetworkPlan").
 		Preload("RenewalHistories").
 		Preload("RenewalHistories.Bill").
 		Preload("RenewalHistories.Payment").
@@ -194,6 +197,7 @@ func (r *subscriptionRepository) FindByCustomerID(customerID uuid.UUID) (*models
 		Preload("NetworkPlan.Router").
 		Preload("ServiceAccounts").
 		Preload("ServiceAccounts.Router").
+		Preload("ServiceAccounts.NetworkPlan").
 		Preload("RenewalHistories").
 		Preload("RenewalHistories.Bill").
 		Preload("RenewalHistories.Payment").

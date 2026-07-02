@@ -73,9 +73,8 @@ func main() {
 	odpCtrl := controllers.NewOdpController(odpSvc)
 
 	subscriptionRepo := repositories.NewSubscriptionRepository(gormDB)
-	subscriptionSvc := services.NewSubscriptionService(subscriptionRepo)
-
 	customerRepo := repositories.NewCustomerRepository(gormDB)
+	subscriptionSvc := services.NewSubscriptionService(subscriptionRepo, customerRepo, networkPlanRepo)
 	customerSvc := services.NewCustomerService(customerRepo, userSvc, subscriptionSvc)
 	customerCtrl := controllers.NewCustomerController(customerSvc)
 

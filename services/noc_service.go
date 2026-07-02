@@ -106,6 +106,10 @@ type NOCCustomerRow struct {
 	LastOnlineAt      *time.Time `json:"last_online_at"`
 	LastOfflineAt     *time.Time `json:"last_offline_at"`
 	LastSyncedAt      *time.Time `json:"last_synced_at"`
+	MismatchReason    string     `json:"mismatch_reason"`
+	RecommendedAction string     `json:"recommended_action"`
+	RemoteProfileName string     `json:"remote_profile_name"`
+	RemoteStatus      string     `json:"remote_status"`
 }
 
 type NOCService interface {
@@ -114,7 +118,7 @@ type NOCService interface {
 	GetRouters() ([]NOCRouterOverview, error)
 	GetRouterSnapshots(id uuid.UUID, limit int) ([]models.RouterSnapshot, error)
 	GetRouterInterfaces(id uuid.UUID, limit int) ([]models.RouterInterfaceSnapshot, error)
-	GetCustomers(status string, routerID string, limit int) ([]NOCCustomerRow, error)
+	GetCustomers(status string, routerID string, coverageID string, packageID string, limit int) ([]NOCCustomerRow, error)
 	GetReconciliationFindings(status string) ([]models.ReconciliationFinding, error)
 	ResolveReconciliationFinding(id uuid.UUID) error
 	GetMetrics() (*NOCMetrics, error)
@@ -395,7 +399,7 @@ func (s *nocService) reconcileRouterAccounts(
 					return err
 				}
 			}
-			if remote.Status == "enabled" && isBusinessInactive(account.Status) {
+			if remote.Status == "enabled" && isBusinessInactive(account.Status) && !isSuspendedWithIsolirProfile(&account) {
 				account.OperationalStatus = "mismatch"
 				if err := s.upsertFinding(routerID, &account.ID, "router_enabled_billing_inactive", "high", fmt.Sprintf("Service account %s %s di billing tetapi enabled di MikroTik", account.Username, account.Status), "disable_or_suspend_remote_account", remote); err != nil {
 					return err
@@ -513,7 +517,7 @@ func (s *nocService) GetOverview() (*NOCOverview, error) {
 	return overview, nil
 }
 
-func (s *nocService) GetCustomers(status string, routerID string, limit int) ([]NOCCustomerRow, error) {
+func (s *nocService) GetCustomers(status string, routerID string, coverageID string, packageID string, limit int) ([]NOCCustomerRow, error) {
 	var parsedRouterID *uuid.UUID
 	if strings.TrimSpace(routerID) != "" {
 		id, err := uuid.Parse(routerID)
@@ -522,13 +526,53 @@ func (s *nocService) GetCustomers(status string, routerID string, limit int) ([]
 		}
 		parsedRouterID = &id
 	}
-	items, err := s.nocRepo.GetNOCServiceAccounts(strings.TrimSpace(status), parsedRouterID, limit)
+	var parsedCoverageID *uuid.UUID
+	if strings.TrimSpace(coverageID) != "" {
+		id, err := uuid.Parse(coverageID)
+		if err != nil {
+			return nil, errors.New("invalid coverage_id")
+		}
+		parsedCoverageID = &id
+	}
+	var parsedPackageID *uuid.UUID
+	if strings.TrimSpace(packageID) != "" {
+		id, err := uuid.Parse(packageID)
+		if err != nil {
+			return nil, errors.New("invalid package_id")
+		}
+		parsedPackageID = &id
+	}
+	items, err := s.nocRepo.GetNOCServiceAccounts(strings.TrimSpace(status), parsedRouterID, parsedCoverageID, parsedPackageID, limit)
 	if err != nil {
 		return nil, err
 	}
+	findings, err := s.nocRepo.FindReconciliationFindings("open")
+	if err != nil {
+		return nil, err
+	}
+	findingByAccount := make(map[uuid.UUID]models.ReconciliationFinding)
+	for _, finding := range findings {
+		if finding.ServiceAccountID == nil {
+			continue
+		}
+		if parsedRouterID != nil && finding.RouterID != *parsedRouterID {
+			continue
+		}
+		existing, exists := findingByAccount[*finding.ServiceAccountID]
+		if !exists || finding.DetectedAt.After(existing.DetectedAt) {
+			findingByAccount[*finding.ServiceAccountID] = finding
+		}
+	}
 	rows := make([]NOCCustomerRow, 0, len(items))
 	for _, item := range items {
-		rows = append(rows, buildNOCCustomerRow(item))
+		row := buildNOCCustomerRow(item)
+		if finding, exists := findingByAccount[item.ID]; exists {
+			row.MismatchReason = finding.Description
+			row.RecommendedAction = finding.RecommendedAction
+			row.RemoteProfileName = finding.RemoteProfileName
+			row.RemoteStatus = finding.RemoteStatus
+		}
+		rows = append(rows, row)
 	}
 	return rows, nil
 }
@@ -831,7 +875,7 @@ func remoteAccountFromItem(serviceType string, item map[string]string) remoteAcc
 }
 
 func remoteAccountKey(serviceType string, username string) string {
-	return strings.TrimSpace(strings.ToLower(serviceType)) + "::" + strings.TrimSpace(strings.ToLower(username))
+	return normalizeNOCServiceType(serviceType) + "::" + strings.TrimSpace(strings.ToLower(username))
 }
 
 func filterAccountsByRouter(accounts []models.ServiceAccount, routerID uuid.UUID) []models.ServiceAccount {
@@ -851,7 +895,18 @@ func expectedAccountProfile(account *models.ServiceAccount) string {
 	if plan == nil {
 		return ""
 	}
+	if isSuspendedWithIsolirProfile(account) {
+		return strings.TrimSpace(plan.IsolirProfileName)
+	}
 	return strings.TrimSpace(plan.MikrotikProfileName)
+}
+
+func isSuspendedWithIsolirProfile(account *models.ServiceAccount) bool {
+	if account == nil || !strings.EqualFold(strings.TrimSpace(account.Status), "suspended") {
+		return false
+	}
+	plan := nocEffectiveNetworkPlan(account)
+	return plan != nil && strings.TrimSpace(plan.IsolirProfileName) != ""
 }
 
 func isBusinessActive(status string) bool {
@@ -912,7 +967,7 @@ func findServiceAccountID(accounts []models.ServiceAccount, routerID uuid.UUID, 
 		if accountRouterID == nil || *accountRouterID != routerID {
 			continue
 		}
-		if !strings.EqualFold(strings.TrimSpace(account.ServiceType), serviceType) {
+		if normalizeNOCServiceType(account.ServiceType) != normalizeNOCServiceType(serviceType) {
 			continue
 		}
 		if strings.EqualFold(strings.TrimSpace(account.Username), username) || (remoteID != "" && strings.TrimSpace(account.RemoteID) == remoteID) {
@@ -937,6 +992,14 @@ func serviceAccountRouterID(account *models.ServiceAccount) *uuid.UUID {
 		return account.Subscription.NetworkPlan.RouterID
 	}
 	return nil
+}
+
+func normalizeNOCServiceType(value string) string {
+	normalized := strings.TrimSpace(strings.ToLower(value))
+	if normalized == "" || normalized == "ppp" {
+		return "pppoe"
+	}
+	return normalized
 }
 
 func nocEffectiveNetworkPlan(account *models.ServiceAccount) *models.NetworkPlan {

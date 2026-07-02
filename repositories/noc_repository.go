@@ -22,7 +22,7 @@ type NOCRepository interface {
 	GetLatestRouterSnapshots() ([]models.RouterSnapshot, error)
 	GetRouterSnapshots(routerID uuid.UUID, limit int) ([]models.RouterSnapshot, error)
 	GetRouterInterfaceSnapshots(routerID uuid.UUID, limit int) ([]models.RouterInterfaceSnapshot, error)
-	GetNOCServiceAccounts(status string, routerID *uuid.UUID, limit int) ([]models.ServiceAccount, error)
+	GetNOCServiceAccounts(status string, routerID *uuid.UUID, coverageID *uuid.UUID, packageID *uuid.UUID, limit int) ([]models.ServiceAccount, error)
 	CountOnlineSessionsSince(since time.Time) (int64, error)
 	CountOnlineSessionsByTypeSince(serviceType string, since time.Time) (int64, error)
 	GetRecentInterfaceIssues(since time.Time, limit int) ([]models.RouterInterfaceSnapshot, error)
@@ -87,7 +87,7 @@ func (r *nocRepository) UpsertOpenReconciliationFinding(finding *models.Reconcil
 		existing.DetectedAt = finding.DetectedAt
 		return r.db.Save(&existing).Error
 	}
-	if err != nil && err != gorm.ErrRecordNotFound {
+	if err != gorm.ErrRecordNotFound {
 		return err
 	}
 	if strings.TrimSpace(finding.Status) == "" {
@@ -181,7 +181,7 @@ func (r *nocRepository) GetRouterInterfaceSnapshots(routerID uuid.UUID, limit in
 	return snapshots, err
 }
 
-func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID, limit int) ([]models.ServiceAccount, error) {
+func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID, coverageID *uuid.UUID, packageID *uuid.UUID, limit int) ([]models.ServiceAccount, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
@@ -209,6 +209,15 @@ func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID
 			*routerID,
 			*routerID,
 		)
+	}
+	if coverageID != nil {
+		query = query.Where(
+			"subscription_id IN (SELECT subscriptions.id FROM subscriptions JOIN customers ON customers.id = subscriptions.customer_id WHERE customers.coverage_id = ?)",
+			*coverageID,
+		)
+	}
+	if packageID != nil {
+		query = query.Where("subscription_id IN (SELECT id FROM subscriptions WHERE package_id = ?)", *packageID)
 	}
 	err := query.Find(&items).Error
 	return items, err
@@ -396,7 +405,7 @@ func FindServiceAccountIDForSession(accounts []models.ServiceAccount, routerID u
 		if accountRouterID == nil || *accountRouterID != routerID {
 			continue
 		}
-		if !equalFoldTrim(account.ServiceType, serviceType) {
+		if normalizeNOCServiceType(account.ServiceType) != normalizeNOCServiceType(serviceType) {
 			continue
 		}
 		if equalFoldTrim(account.Username, username) || (remoteID != "" && account.RemoteID == remoteID) {
@@ -425,4 +434,12 @@ func ServiceAccountRouterIDForNOC(account *models.ServiceAccount) *uuid.UUID {
 
 func equalFoldTrim(a string, b string) bool {
 	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
+}
+
+func normalizeNOCServiceType(value string) string {
+	normalized := strings.TrimSpace(strings.ToLower(value))
+	if normalized == "" || normalized == "ppp" {
+		return "pppoe"
+	}
+	return normalized
 }

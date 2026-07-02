@@ -70,7 +70,7 @@ func (r *alertRepository) UpsertOpenAlert(alert *models.AlertEvent) error {
 		existing.LastSeenAt = alert.LastSeenAt
 		return r.db.Save(&existing).Error
 	}
-	if err != nil && err != gorm.ErrRecordNotFound {
+	if err != gorm.ErrRecordNotFound {
 		return err
 	}
 	if alert.FirstSeenAt.IsZero() {
