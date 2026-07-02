@@ -110,7 +110,7 @@ func main() {
 	alertSvc.StartAlertScheduler()
 	provisioningSvc := services.NewProvisioningService(provisioningJobRepo, provisioningLogRepo)
 	provisioningCtrl := controllers.NewProvisioningController(provisioningSvc)
-	networkPlanSvc := services.NewNetworkPlanService(networkPlanRepo)
+	networkPlanSvc := services.NewNetworkPlanService(networkPlanRepo, routerRepo)
 	networkPlanCtrl := controllers.NewNetworkPlanController(networkPlanSvc)
 	voucherSvc := services.NewVoucherService(voucherBatchRepo, voucherRepo, provisioningJobRepo, provisioningLogRepo, routerRepo)
 	voucherCtrl := controllers.NewVoucherController(voucherSvc)

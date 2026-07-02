@@ -18,6 +18,7 @@ func NewNetworkPlanController(service services.NetworkPlanService) *NetworkPlanC
 func (c *NetworkPlanController) RegisterRoutes(router fiber.Router) {
 	r := router.Group("/admin_api/network-plans")
 	r.Get("/", c.GetAll)
+	r.Post("/sync-from-router", c.SyncFromRouter)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)
 	r.Put("/:id", c.Update)
@@ -81,4 +82,23 @@ func (c *NetworkPlanController) Delete(ctx *fiber.Ctx) error {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "message": "Network plan deleted"})
+}
+
+func (c *NetworkPlanController) SyncFromRouter(ctx *fiber.Ctx) error {
+	var input struct {
+		RouterID string `json:"router_id"`
+		Mode     string `json:"mode"`
+	}
+	if err := ctx.BodyParser(&input); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "invalid payload"})
+	}
+	routerID, err := uuid.Parse(input.RouterID)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid router ID"})
+	}
+	result, err := c.service.SyncFromRouter(routerID, input.Mode)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": result, "message": "Network plans synced from router"})
 }
