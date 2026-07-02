@@ -37,6 +37,7 @@ func (r *serviceAccountRepository) FindAll() ([]models.ServiceAccount, error) {
 		Preload("Subscription.NetworkPlan.Router").
 		Preload("Subscription.Customer").
 		Preload("Subscription.Customer.User").
+		Preload("Subscription.Customer.Coverage").
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
 		Order("created_at desc").
@@ -53,6 +54,7 @@ func (r *serviceAccountRepository) FindBySubscriptionID(subscriptionID string) (
 		Preload("Subscription.NetworkPlan.Router").
 		Preload("Subscription.Customer").
 		Preload("Subscription.Customer.User").
+		Preload("Subscription.Customer.Coverage").
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
 		Where("subscription_id = ?", subscriptionID).
@@ -70,6 +72,7 @@ func (r *serviceAccountRepository) FindByID(id uuid.UUID) (*models.ServiceAccoun
 		Preload("Subscription.NetworkPlan.Router").
 		Preload("Subscription.Customer").
 		Preload("Subscription.Customer.User").
+		Preload("Subscription.Customer.Coverage").
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
 		First(&account, "id = ?", id).Error
