@@ -89,8 +89,11 @@ type NOCCustomerRow struct {
 	ServiceAccountID  uuid.UUID  `json:"service_account_id"`
 	CustomerName      string     `json:"customer_name"`
 	CustomerPhone     string     `json:"customer_phone"`
+	CustomerEmail     string     `json:"customer_email"`
 	CoverageName      string     `json:"coverage_name"`
 	PackageName       string     `json:"package_name"`
+	PackagePrice      int        `json:"package_price"`
+	BillingEndDate    *time.Time `json:"billing_end_date"`
 	RouterID          *uuid.UUID `json:"router_id"`
 	RouterName        string     `json:"router_name"`
 	ServiceType       string     `json:"service_type"`
@@ -946,12 +949,15 @@ func buildNOCCustomerRow(account models.ServiceAccount) NOCCustomerRow {
 	}
 	if account.Subscription != nil && account.Subscription.Package != nil {
 		row.PackageName = account.Subscription.Package.Name
+		row.PackagePrice = account.Subscription.Package.Price
 	}
 	if account.Subscription != nil && account.Subscription.Customer != nil {
+		row.BillingEndDate = &account.Subscription.EndDate
 		row.CustomerPhone = ""
 		if account.Subscription.Customer.User != nil {
 			row.CustomerName = account.Subscription.Customer.User.Name
 			row.CustomerPhone = account.Subscription.Customer.User.Phone
+			row.CustomerEmail = account.Subscription.Customer.User.Email
 		}
 		if account.Subscription.Customer.Coverage != nil {
 			row.CoverageName = account.Subscription.Customer.Coverage.Name
