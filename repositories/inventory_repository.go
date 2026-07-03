@@ -76,6 +76,11 @@ type InventoryRepository interface {
 	FindInventoryValuation() ([]models.InventoryStock, error)
 	UpsertPeriodLock(lock *models.AccountingPeriodLock) error
 	FindPeriodLocks() ([]models.AccountingPeriodLock, error)
+	CreateSupplierInvoice(invoice *models.SupplierInvoice) error
+	FindSupplierInvoices(status string, supplierID *uuid.UUID) ([]models.SupplierInvoice, error)
+	FindSupplierInvoiceByID(id uuid.UUID) (*models.SupplierInvoice, error)
+	CreateSupplierPayment(payment *models.SupplierPayment) error
+	FindSupplierPayments(invoiceID *uuid.UUID, supplierID *uuid.UUID) ([]models.SupplierPayment, error)
 }
 
 type inventoryRepository struct {
@@ -427,7 +432,10 @@ func (r *inventoryRepository) CreateGoodsReceiptWithStock(receipt *models.GoodsR
 		if err := tx.Omit(clause.Associations).Save(po).Error; err != nil {
 			return err
 		}
-		return postGoodsReceiptJournal(tx, receipt)
+		if err := postGoodsReceiptJournal(tx, receipt); err != nil {
+			return err
+		}
+		return createSupplierInvoiceFromGoodsReceipt(tx, receipt)
 	})
 }
 
@@ -1219,6 +1227,91 @@ func (r *inventoryRepository) FindPeriodLocks() ([]models.AccountingPeriodLock, 
 	return locks, err
 }
 
+func (r *inventoryRepository) CreateSupplierInvoice(invoice *models.SupplierInvoice) error {
+	return r.db.Create(invoice).Error
+}
+
+func (r *inventoryRepository) FindSupplierInvoices(status string, supplierID *uuid.UUID) ([]models.SupplierInvoice, error) {
+	if err := backfillSupplierInvoicesFromGoodsReceipts(r.db); err != nil {
+		return nil, err
+	}
+	var invoices []models.SupplierInvoice
+	query := r.db.
+		Preload("Supplier").
+		Preload("GoodsReceipt").
+		Preload("Payments").
+		Order("invoice_date DESC, created_at DESC")
+	if strings.TrimSpace(status) != "" {
+		query = query.Where("status = ?", strings.TrimSpace(status))
+	}
+	if supplierID != nil {
+		query = query.Where("supplier_id = ?", *supplierID)
+	}
+	err := query.Find(&invoices).Error
+	return invoices, err
+}
+
+func (r *inventoryRepository) FindSupplierInvoiceByID(id uuid.UUID) (*models.SupplierInvoice, error) {
+	var invoice models.SupplierInvoice
+	err := r.db.
+		Preload("Supplier").
+		Preload("GoodsReceipt").
+		Preload("Payments").
+		Preload("Payments.Supplier").
+		First(&invoice, "id = ?", id).Error
+	return &invoice, err
+}
+
+func (r *inventoryRepository) CreateSupplierPayment(payment *models.SupplierPayment) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var invoice models.SupplierInvoice
+		if err := tx.First(&invoice, "id = ?", payment.SupplierInvoiceID).Error; err != nil {
+			return err
+		}
+		if invoice.Status == "paid" || invoice.Status == "cancelled" {
+			return errors.New("supplier invoice is not payable")
+		}
+		if payment.Amount <= 0 {
+			return errors.New("payment amount must be greater than zero")
+		}
+		if payment.Amount > invoice.OutstandingAmount {
+			return errors.New("payment amount exceeds outstanding invoice")
+		}
+		payment.SupplierID = invoice.SupplierID
+		if err := tx.Create(payment).Error; err != nil {
+			return err
+		}
+		invoice.PaidAmount += payment.Amount
+		invoice.OutstandingAmount = invoice.GrandTotal - invoice.PaidAmount
+		if invoice.OutstandingAmount <= 0 {
+			invoice.OutstandingAmount = 0
+			invoice.Status = "paid"
+		} else {
+			invoice.Status = "partially_paid"
+		}
+		if err := tx.Omit(clause.Associations).Save(&invoice).Error; err != nil {
+			return err
+		}
+		return postSupplierPaymentJournal(tx, payment)
+	})
+}
+
+func (r *inventoryRepository) FindSupplierPayments(invoiceID *uuid.UUID, supplierID *uuid.UUID) ([]models.SupplierPayment, error) {
+	var payments []models.SupplierPayment
+	query := r.db.
+		Preload("Supplier").
+		Preload("SupplierInvoice").
+		Order("payment_date DESC, created_at DESC")
+	if invoiceID != nil {
+		query = query.Where("supplier_invoice_id = ?", *invoiceID)
+	}
+	if supplierID != nil {
+		query = query.Where("supplier_id = ?", *supplierID)
+	}
+	err := query.Find(&payments).Error
+	return payments, err
+}
+
 type accountingLineInput struct {
 	AccountCode string
 	Debit       float64
@@ -1248,6 +1341,75 @@ func postGoodsReceiptJournal(tx *gorm.DB, receipt *models.GoodsReceipt) error {
 	}
 	lines = append(lines, accountingLineInput{AccountCode: "2000", Credit: total, EntityType: "supplier", EntityID: &receipt.SupplierID, Memo: "Supplier payable"})
 	return postAccountingJournal(tx, "goods_receipt", &receipt.ID, receipt.ReceivedAt, "Goods receipt "+receipt.ReceiptNumber, receipt.ReceivedBy, lines)
+}
+
+func createSupplierInvoiceFromGoodsReceipt(tx *gorm.DB, receipt *models.GoodsReceipt) error {
+	var existing models.SupplierInvoice
+	err := tx.First(&existing, "goods_receipt_id = ?", receipt.ID).Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	total := 0.0
+	for _, item := range receipt.Items {
+		total += item.Total
+	}
+	if total <= 0 {
+		return nil
+	}
+	invoiceDate := receipt.ReceivedAt
+	if invoiceDate.IsZero() {
+		invoiceDate = time.Now()
+	}
+	dueDate := invoiceDate.AddDate(0, 0, 30)
+	invoiceNumber := strings.TrimSpace(receipt.SupplierInvoiceNumber)
+	if invoiceNumber == "" {
+		invoiceNumber = "INV-" + strings.TrimSpace(receipt.ReceiptNumber)
+	}
+	invoice := models.SupplierInvoice{
+		SupplierID:        receipt.SupplierID,
+		GoodsReceiptID:    &receipt.ID,
+		InvoiceNumber:     invoiceNumber,
+		InvoiceDate:       invoiceDate,
+		DueDate:           &dueDate,
+		Status:            "posted",
+		Subtotal:          total,
+		GrandTotal:        total,
+		OutstandingAmount: total,
+		Notes:             "Auto generated from goods receipt " + receipt.ReceiptNumber,
+	}
+	return tx.Create(&invoice).Error
+}
+
+func backfillSupplierInvoicesFromGoodsReceipts(tx *gorm.DB) error {
+	var receipts []models.GoodsReceipt
+	err := tx.
+		Preload("Items").
+		Where("status <> ?", "cancelled").
+		Where("NOT EXISTS (SELECT 1 FROM supplier_invoices WHERE supplier_invoices.goods_receipt_id = goods_receipts.id AND supplier_invoices.deleted_at IS NULL)").
+		Find(&receipts).Error
+	if err != nil {
+		return err
+	}
+	for i := range receipts {
+		if err := createSupplierInvoiceFromGoodsReceipt(tx, &receipts[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func postSupplierPaymentJournal(tx *gorm.DB, payment *models.SupplierPayment) error {
+	cashCode := strings.TrimSpace(payment.CashAccountCode)
+	if cashCode == "" {
+		cashCode = "1000"
+	}
+	return postAccountingJournal(tx, "supplier_payment", &payment.ID, payment.PaymentDate, "Supplier payment "+payment.PaymentNumber, payment.CreatedBy, []accountingLineInput{
+		{AccountCode: "2000", Debit: payment.Amount, EntityType: "supplier", EntityID: &payment.SupplierID, Memo: payment.PaymentMethod},
+		{AccountCode: cashCode, Credit: payment.Amount, EntityType: "supplier", EntityID: &payment.SupplierID, Memo: payment.ReferenceNumber},
+	})
 }
 
 func postMaterialUsageJournal(tx *gorm.DB, usage *models.MaterialUsage) error {
@@ -1400,6 +1562,7 @@ func findAccountByCode(tx *gorm.DB, code string) (*models.ChartOfAccount, error)
 
 func ensureDefaultChartOfAccounts(tx *gorm.DB) error {
 	defaults := []models.ChartOfAccount{
+		{Code: "1000", Name: "Cash and Bank", Type: "asset", IsActive: true},
 		{Code: "1100", Name: "Inventory - Consumables", Type: "asset", IsActive: true},
 		{Code: "1110", Name: "Inventory - Saleable Goods", Type: "asset", IsActive: true},
 		{Code: "1200", Name: "Customer Equipment Assets", Type: "asset", IsActive: true},

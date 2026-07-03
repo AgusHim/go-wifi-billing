@@ -78,6 +78,12 @@ func (c *InventoryController) RegisterRoutes(router fiber.Router) {
 	r.Get("/accounting/valuation", c.GetInventoryValuation)
 	r.Get("/accounting/period-locks", c.GetPeriodLocks)
 	r.Post("/accounting/period-locks", c.UpsertPeriodLock)
+
+	r.Get("/supplier-invoices", c.GetSupplierInvoices)
+	r.Post("/supplier-invoices", c.CreateSupplierInvoice)
+	r.Get("/supplier-invoices/:id", c.GetSupplierInvoiceByID)
+	r.Get("/supplier-payments", c.GetSupplierPayments)
+	r.Post("/supplier-payments", c.CreateSupplierPayment)
 }
 
 func (c *InventoryController) CreateItem(ctx *fiber.Ctx) error {
@@ -692,6 +698,70 @@ func (c *InventoryController) GetPeriodLocks(ctx *fiber.Ctx) error {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": items, "message": "Period locks retrieved"})
+}
+
+func (c *InventoryController) CreateSupplierInvoice(ctx *fiber.Ctx) error {
+	var input models.SupplierInvoice
+	if err := ctx.BodyParser(&input); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "invalid payload"})
+	}
+	item, err := c.service.CreateSupplierInvoice(&input)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.Status(fiber.StatusCreated).JSON(fiber.Map{"success": true, "data": item, "message": "Supplier invoice created"})
+}
+
+func (c *InventoryController) GetSupplierInvoices(ctx *fiber.Ctx) error {
+	supplierID, err := optionalUUIDQuery(ctx.Query("supplier_id", ""))
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid supplier_id"})
+	}
+	items, err := c.service.GetSupplierInvoices(ctx.Query("status", ""), supplierID)
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": items, "message": "Supplier invoices retrieved"})
+}
+
+func (c *InventoryController) GetSupplierInvoiceByID(ctx *fiber.Ctx) error {
+	id, err := uuid.Parse(ctx.Params("id"))
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid ID"})
+	}
+	item, err := c.service.GetSupplierInvoiceByID(id)
+	if err != nil {
+		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": item, "message": "Supplier invoice retrieved"})
+}
+
+func (c *InventoryController) CreateSupplierPayment(ctx *fiber.Ctx) error {
+	var input models.SupplierPayment
+	if err := ctx.BodyParser(&input); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "invalid payload"})
+	}
+	item, err := c.service.CreateSupplierPayment(&input)
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.Status(fiber.StatusCreated).JSON(fiber.Map{"success": true, "data": item, "message": "Supplier payment created"})
+}
+
+func (c *InventoryController) GetSupplierPayments(ctx *fiber.Ctx) error {
+	invoiceID, err := optionalUUIDQuery(ctx.Query("supplier_invoice_id", ""))
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid supplier_invoice_id"})
+	}
+	supplierID, err := optionalUUIDQuery(ctx.Query("supplier_id", ""))
+	if err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "Invalid supplier_id"})
+	}
+	items, err := c.service.GetSupplierPayments(invoiceID, supplierID)
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": items, "message": "Supplier payments retrieved"})
 }
 
 func optionalUUIDQuery(value string) (*uuid.UUID, error) {

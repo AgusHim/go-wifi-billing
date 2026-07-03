@@ -95,5 +95,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.AccountingJournal{},
 		&models.AccountingJournalLine{},
 		&models.AccountingPeriodLock{},
+		&models.SupplierInvoice{},
+		&models.SupplierPayment{},
 	)
 }

@@ -72,6 +72,11 @@ type InventoryService interface {
 	GetInventoryValuation() ([]models.InventoryStock, error)
 	UpsertPeriodLock(lock *models.AccountingPeriodLock) (*models.AccountingPeriodLock, error)
 	GetPeriodLocks() ([]models.AccountingPeriodLock, error)
+	CreateSupplierInvoice(invoice *models.SupplierInvoice) (*models.SupplierInvoice, error)
+	GetSupplierInvoices(status string, supplierID *uuid.UUID) ([]models.SupplierInvoice, error)
+	GetSupplierInvoiceByID(id uuid.UUID) (*models.SupplierInvoice, error)
+	CreateSupplierPayment(payment *models.SupplierPayment) (*models.SupplierPayment, error)
+	GetSupplierPayments(invoiceID *uuid.UUID, supplierID *uuid.UUID) ([]models.SupplierPayment, error)
 }
 
 type inventoryService struct {
@@ -550,6 +555,38 @@ func (s *inventoryService) GetPeriodLocks() ([]models.AccountingPeriodLock, erro
 	return s.repo.FindPeriodLocks()
 }
 
+func (s *inventoryService) CreateSupplierInvoice(invoice *models.SupplierInvoice) (*models.SupplierInvoice, error) {
+	if err := s.prepareSupplierInvoice(invoice); err != nil {
+		return nil, err
+	}
+	if err := s.repo.CreateSupplierInvoice(invoice); err != nil {
+		return nil, err
+	}
+	return s.repo.FindSupplierInvoiceByID(invoice.ID)
+}
+
+func (s *inventoryService) GetSupplierInvoices(status string, supplierID *uuid.UUID) ([]models.SupplierInvoice, error) {
+	return s.repo.FindSupplierInvoices(status, supplierID)
+}
+
+func (s *inventoryService) GetSupplierInvoiceByID(id uuid.UUID) (*models.SupplierInvoice, error) {
+	return s.repo.FindSupplierInvoiceByID(id)
+}
+
+func (s *inventoryService) CreateSupplierPayment(payment *models.SupplierPayment) (*models.SupplierPayment, error) {
+	if err := s.prepareSupplierPayment(payment); err != nil {
+		return nil, err
+	}
+	if err := s.repo.CreateSupplierPayment(payment); err != nil {
+		return nil, err
+	}
+	return payment, nil
+}
+
+func (s *inventoryService) GetSupplierPayments(invoiceID *uuid.UUID, supplierID *uuid.UUID) ([]models.SupplierPayment, error) {
+	return s.repo.FindSupplierPayments(invoiceID, supplierID)
+}
+
 func (s *inventoryService) ensureSKUUnique(sku string, exceptID *uuid.UUID) error {
 	existing, err := s.repo.FindItemBySKU(sku)
 	if err == nil {
@@ -620,6 +657,86 @@ func validateSupplier(supplier *models.Supplier) error {
 	supplier.Email = strings.TrimSpace(supplier.Email)
 	if supplier.Name == "" {
 		return errors.New("supplier name is required")
+	}
+	return nil
+}
+
+func (s *inventoryService) prepareSupplierInvoice(invoice *models.SupplierInvoice) error {
+	if invoice == nil {
+		return errors.New("invalid supplier invoice payload")
+	}
+	if invoice.SupplierID == uuid.Nil {
+		return errors.New("supplier_id is required")
+	}
+	if _, err := s.repo.FindSupplierByID(invoice.SupplierID); err != nil {
+		return err
+	}
+	invoice.InvoiceNumber = strings.TrimSpace(invoice.InvoiceNumber)
+	if invoice.InvoiceNumber == "" {
+		invoice.InvoiceNumber = fmt.Sprintf("INV-%s", time.Now().Format("20060102150405"))
+	}
+	if invoice.InvoiceDate.IsZero() {
+		invoice.InvoiceDate = time.Now()
+	}
+	invoice.Status = strings.TrimSpace(invoice.Status)
+	if invoice.Status == "" {
+		invoice.Status = "posted"
+	}
+	if invoice.Status != "draft" && invoice.Status != "posted" && invoice.Status != "partially_paid" && invoice.Status != "paid" && invoice.Status != "cancelled" {
+		return errors.New("unsupported supplier invoice status")
+	}
+	invoice.Subtotal = math.Max(0, invoice.Subtotal)
+	invoice.Tax = math.Max(0, invoice.Tax)
+	invoice.Discount = math.Max(0, invoice.Discount)
+	if invoice.GrandTotal <= 0 {
+		invoice.GrandTotal = invoice.Subtotal + invoice.Tax - invoice.Discount
+	}
+	if invoice.GrandTotal <= 0 {
+		return errors.New("grand_total must be greater than zero")
+	}
+	if invoice.PaidAmount < 0 || invoice.PaidAmount > invoice.GrandTotal {
+		return errors.New("invalid paid amount")
+	}
+	invoice.OutstandingAmount = invoice.GrandTotal - invoice.PaidAmount
+	if invoice.OutstandingAmount <= 0 {
+		invoice.OutstandingAmount = 0
+		invoice.Status = "paid"
+	}
+	return nil
+}
+
+func (s *inventoryService) prepareSupplierPayment(payment *models.SupplierPayment) error {
+	if payment == nil {
+		return errors.New("invalid supplier payment payload")
+	}
+	if payment.SupplierInvoiceID == uuid.Nil {
+		return errors.New("supplier_invoice_id is required")
+	}
+	invoice, err := s.repo.FindSupplierInvoiceByID(payment.SupplierInvoiceID)
+	if err != nil {
+		return err
+	}
+	if payment.Amount <= 0 {
+		return errors.New("amount must be greater than zero")
+	}
+	if payment.Amount > invoice.OutstandingAmount {
+		return errors.New("amount exceeds outstanding invoice")
+	}
+	payment.SupplierID = invoice.SupplierID
+	payment.PaymentNumber = strings.TrimSpace(payment.PaymentNumber)
+	if payment.PaymentNumber == "" {
+		payment.PaymentNumber = fmt.Sprintf("SPAY-%s", time.Now().Format("20060102150405"))
+	}
+	if payment.PaymentDate.IsZero() {
+		payment.PaymentDate = time.Now()
+	}
+	payment.PaymentMethod = strings.TrimSpace(payment.PaymentMethod)
+	if payment.PaymentMethod == "" {
+		payment.PaymentMethod = "cash"
+	}
+	payment.CashAccountCode = strings.TrimSpace(payment.CashAccountCode)
+	if payment.CashAccountCode == "" {
+		payment.CashAccountCode = "1000"
 	}
 	return nil
 }

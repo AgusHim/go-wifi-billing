@@ -94,3 +94,62 @@ func (a *AccountingPeriodLock) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+type SupplierInvoice struct {
+	ID                uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
+	SupplierID        uuid.UUID      `json:"supplier_id" gorm:"type:uuid;not null;index"`
+	GoodsReceiptID    *uuid.UUID     `json:"goods_receipt_id" gorm:"type:uuid;uniqueIndex"`
+	InvoiceNumber     string         `json:"invoice_number" gorm:"uniqueIndex;not null"`
+	InvoiceDate       time.Time      `json:"invoice_date" gorm:"index"`
+	DueDate           *time.Time     `json:"due_date"`
+	Status            string         `json:"status" gorm:"index"`
+	Subtotal          float64        `json:"subtotal"`
+	Tax               float64        `json:"tax"`
+	Discount          float64        `json:"discount"`
+	GrandTotal        float64        `json:"grand_total"`
+	PaidAmount        float64        `json:"paid_amount"`
+	OutstandingAmount float64        `json:"outstanding_amount"`
+	Notes             string         `json:"notes"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	DeletedAt         gorm.DeletedAt `json:"deleted_at" gorm:"index"`
+
+	Supplier     *Supplier         `json:"supplier,omitempty" gorm:"foreignKey:SupplierID"`
+	GoodsReceipt *GoodsReceipt     `json:"goods_receipt,omitempty" gorm:"foreignKey:GoodsReceiptID"`
+	Payments     []SupplierPayment `json:"payments,omitempty" gorm:"foreignKey:SupplierInvoiceID"`
+}
+
+func (s *SupplierInvoice) BeforeCreate(tx *gorm.DB) error {
+	if s.ID == uuid.Nil {
+		s.ID = uuid.New()
+	}
+	return nil
+}
+
+type SupplierPayment struct {
+	ID                uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
+	SupplierInvoiceID uuid.UUID      `json:"supplier_invoice_id" gorm:"type:uuid;not null;index"`
+	SupplierID        uuid.UUID      `json:"supplier_id" gorm:"type:uuid;not null;index"`
+	PaymentNumber     string         `json:"payment_number" gorm:"uniqueIndex;not null"`
+	PaymentDate       time.Time      `json:"payment_date" gorm:"index"`
+	Amount            float64        `json:"amount"`
+	PaymentMethod     string         `json:"payment_method"`
+	CashAccountCode   string         `json:"cash_account_code"`
+	ReferenceNumber   string         `json:"reference_number"`
+	Notes             string         `json:"notes"`
+	CreatedBy         *uuid.UUID     `json:"created_by" gorm:"type:uuid"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	DeletedAt         gorm.DeletedAt `json:"deleted_at" gorm:"index"`
+
+	SupplierInvoice *SupplierInvoice `json:"supplier_invoice,omitempty" gorm:"foreignKey:SupplierInvoiceID"`
+	Supplier        *Supplier        `json:"supplier,omitempty" gorm:"foreignKey:SupplierID"`
+	Creator         *User            `json:"creator,omitempty" gorm:"foreignKey:CreatedBy"`
+}
+
+func (s *SupplierPayment) BeforeCreate(tx *gorm.DB) error {
+	if s.ID == uuid.Nil {
+		s.ID = uuid.New()
+	}
+	return nil
+}
