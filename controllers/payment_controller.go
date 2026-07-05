@@ -24,20 +24,23 @@ func NewPaymentController(service services.PaymentService) *PaymentController {
 }
 
 func (c *PaymentController) RegisterRoutes(router fiber.Router) {
-	router.Get("/api/payments/callback", c.MidtransCallback)
+	router.Post("/api/payments/callback", c.MidtransCallback)
 	user_api := router.Group("/user_api/payments")
-	user_api.Get("/", c.GetAll)
-	user_api.Post("/midtrans", c.CreateMidtrans)
-	user_api.Get("/user/:user_id", c.GetByUserID)
+	user_api.Get("/", middlewares.UserProtected(), c.GetAll)
+	user_api.Post("/midtrans", middlewares.UserProtected(), c.CreateMidtrans)
+	user_api.Get("/me", middlewares.UserProtected(), c.GetMyPayments)
+	user_api.Get("/user/:user_id", middlewares.UserProtected(), c.GetByUserID)
 
 	admin_api := router.Group("/admin_api/payments")
-	admin_api.Post("/", c.Create)
-	admin_api.Post("/batch", c.BatchCreate)
-	admin_api.Get("/", middlewares.UserProtected(), c.GetAll)
-	admin_api.Get("/export/csv", middlewares.UserProtected(), c.ExportCSV)
-	admin_api.Get("/:id", c.GetByID)
-	admin_api.Put("/:id", c.Update)
-	admin_api.Delete("/:id", c.Delete)
+	adminOnly := middlewares.RequireRoles("root", "admin")
+	paymentOps := middlewares.RequireRoles("root", "admin", "loket", "petugas")
+	admin_api.Post("/", middlewares.UserProtected(), paymentOps, c.Create)
+	admin_api.Post("/batch", middlewares.UserProtected(), paymentOps, c.BatchCreate)
+	admin_api.Get("/", middlewares.UserProtected(), paymentOps, c.GetAll)
+	admin_api.Get("/export/csv", middlewares.UserProtected(), paymentOps, c.ExportCSV)
+	admin_api.Get("/:id", middlewares.UserProtected(), paymentOps, c.GetByID)
+	admin_api.Put("/:id", middlewares.UserProtected(), paymentOps, c.Update)
+	admin_api.Delete("/:id", middlewares.UserProtected(), adminOnly, c.Delete)
 }
 
 func (c *PaymentController) GetAll(ctx *fiber.Ctx) error {
@@ -141,6 +144,13 @@ func (c *PaymentController) GetByID(ctx *fiber.Ctx) error {
 }
 func (c *PaymentController) GetByUserID(ctx *fiber.Ctx) error {
 	userID := ctx.Params("user_id")
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		currentUserID, _ := userClaims["user_id"].(string)
+		if strings.ToLower(strings.TrimSpace(role)) == "user" && currentUserID != userID {
+			return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "forbidden"})
+		}
+	}
 
 	data, err := c.service.GetByUserID(userID)
 	if err != nil {
@@ -153,6 +163,23 @@ func (c *PaymentController) GetByUserID(ctx *fiber.Ctx) error {
 		"message": "Success get payments by user",
 	})
 }
+
+func (c *PaymentController) GetMyPayments(ctx *fiber.Ctx) error {
+	userClaims, ok := ctx.Locals("user").(jwt.MapClaims)
+	if !ok {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "Unauthorized"})
+	}
+	userID, ok := userClaims["user_id"].(string)
+	if !ok || strings.TrimSpace(userID) == "" {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "Unauthorized"})
+	}
+	data, err := c.service.GetByUserID(userID)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": data, "message": "Success get payments by authenticated user"})
+}
+
 func (c *PaymentController) Create(ctx *fiber.Ctx) error {
 	var input models.Payment
 	if err := ctx.BodyParser(&input); err != nil {
@@ -203,7 +230,15 @@ func (c *PaymentController) CreateMidtrans(ctx *fiber.Ctx) error {
 	if err := ctx.BodyParser(&input); err != nil {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
-	data, err := c.service.CreateMidtransTransaction(input.BillID)
+	userClaims, ok := ctx.Locals("user").(jwt.MapClaims)
+	if !ok {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "Unauthorized"})
+	}
+	userID, ok := userClaims["user_id"].(string)
+	if !ok || strings.TrimSpace(userID) == "" {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "Unauthorized"})
+	}
+	data, err := c.service.CreateMidtransTransactionForUser(input.BillID, userID)
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
@@ -237,11 +272,11 @@ func (c *PaymentController) MidtransCallback(ctx *fiber.Ctx) error {
 		})
 	}
 
-	err := c.service.HandleMindtransCallback(payload.OrderID, payload.TransactionStatus)
+	err := c.service.HandleMindtransCallback(payload.OrderID, payload.TransactionStatus, payload.GrossAmount, payload.FraudStatus)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
-			"message": "Failed to update payment status",
+			"message": err.Error(),
 		})
 	}
 

@@ -8,18 +8,29 @@ import (
 )
 
 type Bill struct {
-	ID             uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
-	PublicID       string     `gorm:"type:varchar(255);unique" json:"public_id"`
-	SubscriptionID uuid.UUID  `gorm:"type:uuid" json:"subscription_id"`
-	CustomerID     uuid.UUID  `gorm:"type:uuid" json:"customer_id"`
-	BillDate       time.Time  `json:"bill_date"`
-	DueDate        time.Time  `json:"due_date"`
-	TerminatedDate *time.Time `json:"terminated_date"`
-	Amount         int        `json:"amount"`
-	PPN            int        `json:"ppn"`
-	UniqueCode     int        `json:"unique_code"`
-	Status         string     `json:"status"` // unpaid, paid, overdue
-	AdminID        *uuid.UUID `gorm:"type:uuid" json:"admin_id"`
+	ID               uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
+	PublicID         string     `gorm:"type:varchar(255);unique" json:"public_id"`
+	SubscriptionID   uuid.UUID  `gorm:"type:uuid" json:"subscription_id"`
+	CustomerID       uuid.UUID  `gorm:"type:uuid" json:"customer_id"`
+	BillDate         time.Time  `json:"bill_date"`
+	DueDate          time.Time  `json:"due_date"`
+	TerminatedDate   *time.Time `json:"terminated_date"`
+	Amount           int        `json:"amount"`
+	PPN              int        `json:"ppn"`
+	UniqueCode       int        `json:"unique_code"`
+	Status           string     `json:"status"` // unpaid, paid, overdue
+	AdminID          *uuid.UUID `gorm:"type:uuid" json:"admin_id"`
+	PeriodYear       *int       `json:"period_year"`
+	PeriodMonth      *int       `json:"period_month"`
+	PeriodStart      *time.Time `json:"period_start"`
+	PeriodEnd        *time.Time `json:"period_end"`
+	Source           string     `gorm:"type:varchar(50);default:legacy_backfill" json:"source"`
+	PaidAt           *time.Time `json:"paid_at"`
+	OverdueAt        *time.Time `json:"overdue_at"`
+	IsolirEnqueuedAt *time.Time `json:"isolir_enqueued_at"`
+	GenerationRunID  *uuid.UUID `gorm:"type:uuid" json:"generation_run_id"`
+	LastPaymentID    *uuid.UUID `gorm:"type:uuid" json:"last_payment_id"`
+	StatusReason     string     `gorm:"type:varchar(255)" json:"status_reason"`
 	// Snapshot fields: dipreserve walaupun customer/user/package terhapus.
 	// Diisi saat bill dibuat; jangan diubah saat update kecuali memang ada perbaikan data.
 	CustomerName          string         `json:"customer_name"`

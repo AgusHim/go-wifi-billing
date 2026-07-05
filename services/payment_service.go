@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +27,8 @@ type PaymentService interface {
 	Update(id string, input models.Payment) (*models.Payment, error)
 	Delete(id string) error
 	CreateMidtransTransaction(paymentID string) (*models.Payment, error)
-	HandleMindtransCallback(paymentID string, status string) error
+	CreateMidtransTransactionForUser(billID string, userID string) (*models.Payment, error)
+	HandleMindtransCallback(paymentID string, status string, grossAmount string, fraudStatus string) error
 	GetByUserID(userID string) ([]models.Payment, error)
 	BatchCreate(inputs []models.Payment) ([]models.Payment, error)
 	ExportCSV(adminID string, search string, status string, startAt string, endAt string) ([]byte, error)
@@ -99,6 +102,12 @@ func (s *paymentService) Create(input models.Payment) (*models.Payment, error) {
 	if err != nil {
 		return nil, err
 	}
+	if input.Amount <= 0 {
+		input.Amount = bill.Amount
+	}
+	if input.Amount != bill.Amount {
+		return nil, fmt.Errorf("payment amount must match bill amount")
+	}
 
 	// Cegah double payment: cek apakah sudah ada payment confirmed/pending untuk bill ini
 	existing, _ := s.repo.FindActiveByBillID(input.BillID)
@@ -149,6 +158,12 @@ func (s *paymentService) Update(id string, input models.Payment) (*models.Paymen
 	if err != nil {
 		return nil, err
 	}
+	if input.Amount <= 0 {
+		input.Amount = bill.Amount
+	}
+	if input.Amount != bill.Amount {
+		return nil, fmt.Errorf("payment amount must match bill amount")
+	}
 
 	payment.RefID = input.RefID
 	payment.PaymentDate = input.PaymentDate
@@ -195,7 +210,14 @@ func (s *paymentService) Delete(id string) error {
 func (s *paymentService) UpdateBillAndSubs(input models.Payment, bill models.Bill) (*models.Bill, *models.Subscription, error) {
 
 	// Update bill status to paid
+	now := time.Now()
 	bill.Status = "paid"
+	if bill.PaidAt == nil {
+		bill.PaidAt = &now
+	}
+	bill.LastPaymentID = &input.ID
+	bill.StatusReason = "payment confirmed"
+	bill.UpdatedAt = now
 	err := s.billRepo.Update(&bill)
 	if err != nil {
 		return nil, nil, err
@@ -207,9 +229,10 @@ func (s *paymentService) UpdateBillAndSubs(input models.Payment, bill models.Bil
 	if err != nil {
 		return nil, nil, err
 	}
-	startNext, endNext := nextMonthRange(time.Now())
-	subs.StartDate = startNext
-	subs.EndDate = endNext
+	periodStart, periodEnd := subscriptionRangeFromBill(bill, now)
+	subs.StartDate = periodStart
+	subs.EndDate = periodEnd
+	subs.Status = "active"
 
 	err = s.subcRepo.Update(subs)
 	if err != nil {
@@ -288,6 +311,18 @@ func nextMonthRange(ref time.Time) (time.Time, time.Time) {
 	return start, end
 }
 
+func subscriptionRangeFromBill(bill models.Bill, referenceTime time.Time) (time.Time, time.Time) {
+	if bill.PeriodStart != nil && bill.PeriodEnd != nil {
+		return *bill.PeriodStart, *bill.PeriodEnd
+	}
+	if !bill.BillDate.IsZero() {
+		start := time.Date(bill.BillDate.Year(), bill.BillDate.Month(), 1, 0, 0, 0, 0, bill.BillDate.Location())
+		end := start.AddDate(0, 1, 0).Add(-time.Second)
+		return start, end
+	}
+	return nextMonthRange(referenceTime)
+}
+
 func (s *paymentService) handleConfirmation(payment *models.Payment, bill *models.Bill) (*models.Bill, *models.Subscription, error) {
 	if strings.EqualFold(strings.TrimSpace(bill.Status), "paid") {
 		subscription, err := s.subcRepo.FindByID(bill.SubscriptionID)
@@ -315,6 +350,10 @@ func (s *paymentService) handleConfirmation(payment *models.Payment, bill *model
 func (s *paymentService) RollbackBillAndSubs(bill models.Bill) (*models.Bill, *models.Subscription, error) {
 	// Rollback bill status to unpaid
 	bill.Status = "unpaid"
+	bill.PaidAt = nil
+	bill.LastPaymentID = nil
+	bill.StatusReason = "payment rollback"
+	bill.UpdatedAt = time.Now()
 	err := s.billRepo.Update(&bill)
 	if err != nil {
 		return nil, nil, err
@@ -347,6 +386,32 @@ func (s *paymentService) CreateMidtransTransaction(billID string) (*models.Payme
 	if err != nil {
 		return nil, err
 	}
+	return s.createMidtransTransactionForBill(&bill)
+}
+
+func (s *paymentService) CreateMidtransTransactionForUser(billID string, userID string) (*models.Payment, error) {
+	bill, err := s.billRepo.FindByID(billID)
+	if err != nil {
+		return nil, err
+	}
+	if bill.Customer.UserID.String() != userID {
+		return nil, errors.New("bill does not belong to authenticated user")
+	}
+	return s.createMidtransTransactionForBill(&bill)
+}
+
+func (s *paymentService) createMidtransTransactionForBill(bill *models.Bill) (*models.Payment, error) {
+	if bill == nil {
+		return nil, errors.New("bill is nil")
+	}
+	if strings.EqualFold(strings.TrimSpace(bill.Status), "paid") {
+		return nil, errors.New("bill already paid")
+	}
+
+	now := time.Now()
+	if _, err := s.repo.ExpirePendingByBillID(bill.ID, now); err != nil {
+		return nil, err
+	}
 
 	// Cegah duplikat: cek apakah sudah ada payment confirmed/pending untuk bill ini
 	existing, _ := s.repo.FindActiveByBillID(bill.ID)
@@ -354,9 +419,8 @@ func (s *paymentService) CreateMidtransTransaction(billID string) (*models.Payme
 		return nil, fmt.Errorf("bill sudah memiliki payment aktif (status: %s)", existing.Status)
 	}
 
-	now := time.Now()
 	var payment models.Payment
-	payment.Bill = bill
+	payment.Bill = *bill
 	payment.ID = uuid.New()
 	payment.BillID = bill.ID
 	payment.PaymentDate = now
@@ -390,23 +454,30 @@ func (s *paymentService) CreateMidtransTransaction(billID string) (*models.Payme
 	}
 	payment.RefID = snapResp.Token
 	payment.PaymentUrl = &snapResp.RedirectURL
-	applyPaymentSnapshot(&payment, &bill)
+	applyPaymentSnapshot(&payment, bill)
 
-	err = s.repo.Create(&payment)
-	if err != nil {
+	if err := s.repo.Create(&payment); err != nil {
 		return nil, err
 	}
 
 	return &payment, nil
 }
 
-func (s *paymentService) HandleMindtransCallback(paymentID string, status string) error {
+func (s *paymentService) HandleMindtransCallback(paymentID string, status string, grossAmount string, fraudStatus string) error {
 	payment, err := s.repo.FindByID(paymentID)
 	if err != nil {
 		return err
 	}
 	previousStatus := strings.TrimSpace(strings.ToLower(payment.Status))
-	payment_status := getStatus(status)
+	if previousStatus == "confirmed" {
+		return nil
+	}
+
+	if err := validateCallbackAmount(grossAmount, payment.Amount); err != nil {
+		return err
+	}
+
+	payment_status := getStatus(status, fraudStatus)
 	payment.Status = payment_status
 
 	// Update Bill And Subscription
@@ -430,10 +501,39 @@ func (s *paymentService) HandleMindtransCallback(paymentID string, status string
 	return err
 }
 
-func getStatus(status string) string {
-	if status == "settlement" || status == "capture" {
+func validateCallbackAmount(grossAmount string, expectedAmount int) error {
+	grossAmount = strings.TrimSpace(grossAmount)
+	if grossAmount == "" {
+		return errors.New("gross_amount is required")
+	}
+
+	amount, err := strconv.ParseFloat(grossAmount, 64)
+	if err != nil {
+		return fmt.Errorf("invalid gross_amount: %w", err)
+	}
+	if int(math.Round(amount)) != expectedAmount {
+		return fmt.Errorf("gross_amount mismatch: expected %d got %s", expectedAmount, grossAmount)
+	}
+	return nil
+}
+
+func getStatus(status string, fraudStatus string) string {
+	fraudStatus = strings.TrimSpace(strings.ToLower(fraudStatus))
+	if fraudStatus == "deny" {
+		return "failed"
+	}
+
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "settlement", "capture":
+		if fraudStatus == "challenge" {
+			return "pending"
+		}
 		return "confirmed"
-	} else {
+	case "expire":
+		return "expired"
+	case "cancel", "deny", "failure":
+		return "failed"
+	default:
 		return status
 	}
 }

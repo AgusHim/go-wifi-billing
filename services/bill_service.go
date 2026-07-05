@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"os"
 	"strings"
 	"time"
 
@@ -24,6 +25,10 @@ type BillService interface {
 	Delete(id string) error
 	DeleteCurrentMonthUnpaidBills() (int64, error)
 	GenerateMonthlyBills() error
+	GenerateMonthlyBillsForPeriod(period string) (*BillGenerationResult, error)
+	PreviewMonthlyBills(period string) (*BillGenerationResult, error)
+	MarkOverdueBills(referenceTime time.Time, limit int) (int, error)
+	StartOverdueScheduler()
 	GetByPublicID(publicID string) (*models.Bill, error)
 	GetByUserID(userID string) ([]models.Bill, error)
 	GetUnpaidBills() ([]models.Bill, error)
@@ -31,6 +36,34 @@ type BillService interface {
 	GetDashboardStats(month, year int, adminID string) (map[string]interface{}, error)
 	GetDashboardCharts(months int, adminID string) (map[string]interface{}, error)
 	GetRecentPaidBills(limit int) ([]models.Bill, error)
+}
+
+type BillGenerationResult struct {
+	Period             string               `json:"period"`
+	PeriodYear         int                  `json:"period_year"`
+	PeriodMonth        int                  `json:"period_month"`
+	DryRun             bool                 `json:"dry_run"`
+	TotalCandidates    int                  `json:"total_candidates"`
+	Eligible           int                  `json:"eligible"`
+	WouldCreate        int                  `json:"would_create"`
+	Created            int                  `json:"created"`
+	SkippedExisting    int                  `json:"skipped_existing"`
+	SkippedOutOfPeriod int                  `json:"skipped_out_of_period"`
+	SkippedInvalid     int                  `json:"skipped_invalid"`
+	EstimatedAmount    int                  `json:"estimated_amount"`
+	Items              []BillGenerationItem `json:"items"`
+}
+
+type BillGenerationItem struct {
+	SubscriptionID uuid.UUID `json:"subscription_id"`
+	CustomerID     uuid.UUID `json:"customer_id"`
+	CustomerName   string    `json:"customer_name"`
+	PackageName    string    `json:"package_name"`
+	Action         string    `json:"action"`
+	Reason         string    `json:"reason"`
+	Amount         int       `json:"amount"`
+	ExistingBillID string    `json:"existing_bill_id,omitempty"`
+	PublicID       string    `json:"public_id,omitempty"`
 }
 
 type billService struct {
@@ -105,6 +138,7 @@ func (s *billService) Create(input models.Bill) (models.Bill, error) {
 	input.ID = uuid.New()
 	input.CreatedAt = time.Now()
 	input.UpdatedAt = time.Now()
+	ensureBillPeriod(&input, time.Local, "manual")
 
 	// Snapshot data customer/package saat bill dibuat agar tetap utuh kalau
 	// nantinya customer/user/package terhapus.
@@ -180,6 +214,15 @@ func (s *billService) Update(id string, input models.Bill) (models.Bill, error) 
 	bill.BillDate = input.BillDate
 	bill.DueDate = input.DueDate
 	bill.TerminatedDate = input.TerminatedDate
+	bill.PeriodYear = input.PeriodYear
+	bill.PeriodMonth = input.PeriodMonth
+	bill.PeriodStart = input.PeriodStart
+	bill.PeriodEnd = input.PeriodEnd
+	if strings.TrimSpace(input.Source) != "" {
+		bill.Source = input.Source
+	}
+	bill.StatusReason = input.StatusReason
+	ensureBillPeriod(&bill, time.Local, "manual")
 	bill.UpdatedAt = time.Now()
 	err = s.repo.Update(&bill)
 	if err != nil {
@@ -215,45 +258,98 @@ func (s *billService) DeleteCurrentMonthUnpaidBills() (int64, error) {
 }
 
 func (s *billService) GenerateMonthlyBills() error {
+	_, err := s.GenerateMonthlyBillsForPeriod("")
+	return err
+}
+
+func (s *billService) GenerateMonthlyBillsForPeriod(period string) (*BillGenerationResult, error) {
+	return s.runMonthlyBillGeneration(period, false)
+}
+
+func (s *billService) PreviewMonthlyBills(period string) (*BillGenerationResult, error) {
+	return s.runMonthlyBillGeneration(period, true)
+}
+
+func (s *billService) runMonthlyBillGeneration(period string, dryRun bool) (*BillGenerationResult, error) {
 	status := "active"
 	// Luluskan false agar mengambil SEMUA active subscription, bukan hanya yang end_date-nya bulan ini.
 	// Hal ini untuk memastikan customer yang telat bayar bulan lalu tetap mendapat tagihan baru.
 	subs, err := s.subRepo.FindForBill(nil, &status, false)
 	log.Printf("Found %d active subscriptions", len(subs))
 	if err != nil {
-		return fmt.Errorf("failed to fetch subscriptions: %w", err)
+		return nil, fmt.Errorf("failed to fetch subscriptions: %w", err)
 	}
 
 	// Pastikan kita menggunakan zona waktu Indonesia (WIB)
 	loc, err := time.LoadLocation("Asia/Jakarta")
-	var now time.Time
 	if err == nil {
-		now = time.Now().In(loc)
 	} else {
 		// Fallback ke UTC+7 jika tzdata tidak ada di sistem
 		loc = time.FixedZone("WIB", 7*60*60)
-		now = time.Now().In(loc)
+	}
+	now := time.Now().In(loc)
+
+	billMonthStart, currentYear, currentMonth, err := resolveBillingPeriod(period, now, loc)
+	if err != nil {
+		return nil, err
+	}
+	periodEnd := billMonthStart.AddDate(0, 1, 0).Add(-time.Second)
+
+	result := &BillGenerationResult{
+		Period:          fmt.Sprintf("%04d-%02d", currentYear, currentMonth),
+		PeriodYear:      currentYear,
+		PeriodMonth:     currentMonth,
+		DryRun:          dryRun,
+		TotalCandidates: len(subs),
+		Items:           make([]BillGenerationItem, 0, len(subs)),
 	}
 
-	currentMonth := int(now.Month())
-	currentYear := now.Year()
+	if dryRun {
+		log.Printf("Previewing monthly bills for %d-%02d", currentYear, currentMonth)
+	} else {
+		log.Printf("Generating monthly bills for %d-%02d", currentYear, currentMonth)
+	}
 
-	log.Printf("Generating monthly bills for %d-%02d", currentYear, currentMonth)
-
-	billMonthStart := time.Date(currentYear, time.Month(currentMonth), 1, 0, 0, 0, 0, loc)
 	for _, sub := range subs {
+		item := BillGenerationItem{
+			SubscriptionID: sub.ID,
+			CustomerID:     sub.CustomerID,
+			CustomerName:   subscriptionCustomerName(&sub),
+			PackageName:    subscriptionPackageName(&sub),
+		}
+
 		if !shouldGenerateBillForMonth(sub, billMonthStart, loc) {
+			result.SkippedOutOfPeriod++
+			item.Action = "skip"
+			item.Reason = "subscription outside billing period"
+			result.Items = append(result.Items, item)
+			continue
+		}
+		result.Eligible++
+
+		if sub.Package == nil {
+			result.SkippedInvalid++
+			item.Action = "skip"
+			item.Reason = "subscription package is missing"
+			result.Items = append(result.Items, item)
 			continue
 		}
 
-		// Cek apakah sudah ada bill bulan ini
-		existing, err := s.repo.FindBillBySubscriptionAndMonth(sub.ID, currentMonth, currentYear)
+		// Cek apakah sudah ada bill periode ini. Fallback ke bill_date disediakan
+		// untuk data lama yang belum/backfill period field.
+		existing, err := s.repo.FindBillBySubscriptionAndPeriod(sub.ID, currentYear, currentMonth)
 
 		if err == nil && existing != nil {
-			continue // sudah ada bill bulan ini
+			result.SkippedExisting++
+			item.Action = "skip"
+			item.Reason = "bill already exists for period"
+			item.ExistingBillID = existing.ID.String()
+			item.PublicID = existing.PublicID
+			result.Items = append(result.Items, item)
+			continue
 		}
 		if err != nil && err != gorm.ErrRecordNotFound {
-			return err
+			return nil, err
 		}
 
 		billDate := now
@@ -279,6 +375,22 @@ func (s *billService) GenerateMonthlyBills() error {
 			amount += uniqueCode // tambahkan ke total
 		}
 
+		periodYear := currentYear
+		periodMonth := currentMonth
+		periodStart := billMonthStart
+		periodEndCopy := periodEnd
+
+		result.WouldCreate++
+		result.EstimatedAmount += amount
+		item.Action = "create"
+		item.Reason = "eligible"
+		item.Amount = amount
+
+		if dryRun {
+			result.Items = append(result.Items, item)
+			continue
+		}
+
 		bill := &models.Bill{
 			ID:             uuid.New(),
 			PublicID:       fmt.Sprintf("%d%02d-%s", currentYear, currentMonth, uuid.NewString()[:6]),
@@ -290,6 +402,12 @@ func (s *billService) GenerateMonthlyBills() error {
 			PPN:            ppn,
 			UniqueCode:     uniqueCode,
 			Status:         "unpaid",
+			PeriodYear:     &periodYear,
+			PeriodMonth:    &periodMonth,
+			PeriodStart:    &periodStart,
+			PeriodEnd:      &periodEndCopy,
+			Source:         "manual_generate",
+			StatusReason:   "generated monthly bill",
 			CreatedAt:      now,
 			UpdatedAt:      now,
 		}
@@ -298,8 +416,11 @@ func (s *billService) GenerateMonthlyBills() error {
 		log.Printf("Creating bill %s for customer %s: %v", bill.PublicID, sub.CustomerID.String(), bill)
 
 		if err := s.repo.Create(bill); err != nil {
-			return fmt.Errorf("failed to create bill: %w", err)
+			return nil, fmt.Errorf("failed to create bill: %w", err)
 		}
+		result.Created++
+		item.PublicID = bill.PublicID
+		result.Items = append(result.Items, item)
 	}
 
 	// go func() {
@@ -309,7 +430,133 @@ func (s *billService) GenerateMonthlyBills() error {
 	// 	}
 	// }()
 
-	return nil
+	return result, nil
+}
+
+func (s *billService) MarkOverdueBills(referenceTime time.Time, limit int) (int, error) {
+	if referenceTime.IsZero() {
+		referenceTime = time.Now()
+	}
+	bills, err := s.repo.FindUnpaidOverdueBills(referenceTime, limit)
+	if err != nil {
+		return 0, err
+	}
+	updated := 0
+	for i := range bills {
+		bill := bills[i]
+		now := time.Now()
+		bill.Status = "overdue"
+		if bill.OverdueAt == nil {
+			bill.OverdueAt = &now
+		}
+		bill.StatusReason = "billing automation marked overdue"
+		bill.UpdatedAt = now
+		if err := s.repo.Update(&bill); err != nil {
+			return updated, err
+		}
+		updated++
+		if s.billingProvisioningSvc == nil {
+			continue
+		}
+		subscription, subErr := s.subRepo.FindByID(bill.SubscriptionID)
+		if subErr != nil {
+			log.Printf("[billing-automation] failed to load subscription %s for overdue bill %s: %v", bill.SubscriptionID, bill.ID, subErr)
+			continue
+		}
+		s.billingProvisioningSvc.HandleBillOverdue(&bill, subscription)
+	}
+	return updated, nil
+}
+
+func resolveBillingPeriod(period string, referenceTime time.Time, loc *time.Location) (time.Time, int, int, error) {
+	if loc == nil {
+		loc = time.Local
+	}
+	period = strings.TrimSpace(period)
+	if period == "" {
+		localRef := referenceTime.In(loc)
+		start := time.Date(localRef.Year(), localRef.Month(), 1, 0, 0, 0, 0, loc)
+		return start, localRef.Year(), int(localRef.Month()), nil
+	}
+	parsed, err := time.ParseInLocation("2006-01", period, loc)
+	if err != nil {
+		return time.Time{}, 0, 0, errors.New("invalid period format, expected YYYY-MM")
+	}
+	start := time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, loc)
+	return start, parsed.Year(), int(parsed.Month()), nil
+}
+
+func ensureBillPeriod(bill *models.Bill, loc *time.Location, source string) {
+	if bill == nil {
+		return
+	}
+	if loc == nil {
+		loc = time.Local
+	}
+	baseDate := bill.BillDate
+	if baseDate.IsZero() {
+		baseDate = time.Now().In(loc)
+	}
+	localDate := baseDate.In(loc)
+	year := localDate.Year()
+	month := int(localDate.Month())
+	start := time.Date(year, localDate.Month(), 1, 0, 0, 0, 0, loc)
+	end := start.AddDate(0, 1, 0).Add(-time.Second)
+	if bill.PeriodYear == nil {
+		bill.PeriodYear = &year
+	}
+	if bill.PeriodMonth == nil {
+		bill.PeriodMonth = &month
+	}
+	if bill.PeriodStart == nil {
+		bill.PeriodStart = &start
+	}
+	if bill.PeriodEnd == nil {
+		bill.PeriodEnd = &end
+	}
+	if strings.TrimSpace(bill.Source) == "" {
+		bill.Source = source
+	}
+}
+
+func subscriptionCustomerName(sub *models.Subscription) string {
+	if sub == nil || sub.Customer == nil || sub.Customer.User == nil {
+		return ""
+	}
+	return sub.Customer.User.Name
+}
+
+func subscriptionPackageName(sub *models.Subscription) string {
+	if sub == nil || sub.Package == nil {
+		return ""
+	}
+	return sub.Package.Name
+}
+
+func (s *billService) StartOverdueScheduler() {
+	if !billingOverdueAutomationEnabled() {
+		return
+	}
+	interval := resolveBillingOverdueInterval()
+	go func() {
+		if updated, err := s.MarkOverdueBills(time.Now(), 500); err != nil {
+			log.Printf("[billing-automation] initial overdue run failed: %v", err)
+		} else if updated > 0 {
+			log.Printf("[billing-automation] initial overdue run marked %d bills overdue", updated)
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			updated, err := s.MarkOverdueBills(time.Now(), 500)
+			if err != nil {
+				log.Printf("[billing-automation] scheduled overdue run failed: %v", err)
+				continue
+			}
+			if updated > 0 {
+				log.Printf("[billing-automation] scheduled overdue run marked %d bills overdue", updated)
+			}
+		}
+	}()
 }
 
 func shouldGenerateBillForMonth(sub models.Subscription, billMonthStart time.Time, loc *time.Location) bool {
@@ -343,6 +590,23 @@ func monthStartInLocation(date time.Time, loc *time.Location) time.Time {
 func billMonthRange(year int, month int) (time.Time, time.Time) {
 	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
 	return startOfMonth, startOfMonth.AddDate(0, 1, 0)
+}
+
+func billingOverdueAutomationEnabled() bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv("BILLING_AUTOMATION_ENABLED")))
+	return value == "1" || value == "true" || value == "yes"
+}
+
+func resolveBillingOverdueInterval() time.Duration {
+	value := strings.TrimSpace(os.Getenv("BILLING_OVERDUE_CHECK_INTERVAL"))
+	if value == "" {
+		return time.Hour
+	}
+	interval, err := time.ParseDuration(value)
+	if err != nil || interval <= 0 {
+		return time.Hour
+	}
+	return interval
 }
 
 func (s *billService) GetUnpaidBills() ([]models.Bill, error) {
