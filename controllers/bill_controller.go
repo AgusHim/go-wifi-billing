@@ -231,7 +231,7 @@ func (c *BillController) DeleteCurrentMonthUnpaidBills(ctx *fiber.Ctx) error {
 		"data": fiber.Map{
 			"deleted_count": deleted,
 		},
-		"message": "Current month unpaid generated bills deleted successfully",
+		"message": "Current month non-paid generated bills deleted successfully",
 	})
 }
 

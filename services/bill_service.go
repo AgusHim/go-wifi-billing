@@ -246,12 +246,17 @@ func (s *billService) Delete(id string) error {
 }
 
 func (s *billService) DeleteCurrentMonthUnpaidBills() (int64, error) {
-	now := time.Now()
-	startOfMonth, endOfMonth := billMonthRange(now.Year(), int(now.Month()))
-
-	deleted, err := s.repo.DeleteUnpaidByBillDateRange(startOfMonth, endOfMonth)
+	loc, err := time.LoadLocation("Asia/Jakarta")
 	if err != nil {
-		return 0, fmt.Errorf("failed to delete current month unpaid bills: %w", err)
+		loc = time.FixedZone("WIB", 7*60*60)
+	}
+	now := time.Now().In(loc)
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+	endOfMonth := startOfMonth.AddDate(0, 1, 0)
+
+	deleted, err := s.repo.DeleteNonPaidByPeriod(now.Year(), int(now.Month()), startOfMonth, endOfMonth)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete current month non-paid bills: %w", err)
 	}
 
 	return deleted, nil

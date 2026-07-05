@@ -90,6 +90,45 @@ func TestGetDashboardChartRowsCountsOnlyActiveSubscriptions(t *testing.T) {
 	}
 }
 
+func TestDeleteNonPaidByPeriodKeepsPaidAndOtherPeriods(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	if err := db.AutoMigrate(&models.Bill{}); err != nil {
+		t.Fatalf("migrate test database: %v", err)
+	}
+
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	periodYear := 2026
+	periodMonth := 7
+	start := time.Date(periodYear, time.July, 1, 0, 0, 0, 0, loc)
+	end := start.AddDate(0, 1, 0)
+
+	paidID := createBillForDeletePeriodTest(t, db, "paid", &periodYear, &periodMonth, start)
+	unpaidID := createBillForDeletePeriodTest(t, db, "unpaid", &periodYear, &periodMonth, start)
+	overdueID := createBillForDeletePeriodTest(t, db, "overdue", &periodYear, &periodMonth, start)
+	legacyUnpaidID := createBillForDeletePeriodTest(t, db, "unpaid", nil, nil, start.AddDate(0, 0, 5))
+	otherPeriodID := createBillForDeletePeriodTest(t, db, "unpaid", &periodYear, intPtr(8), end)
+
+	deleted, err := NewBillRepository(db).DeleteNonPaidByPeriod(periodYear, periodMonth, start, end)
+	if err != nil {
+		t.Fatalf("delete non-paid by period: %v", err)
+	}
+	if deleted != 3 {
+		t.Fatalf("deleted = %d, want 3", deleted)
+	}
+
+	assertBillDeleted(t, db, unpaidID, true)
+	assertBillDeleted(t, db, overdueID, true)
+	assertBillDeleted(t, db, legacyUnpaidID, true)
+	assertBillDeleted(t, db, paidID, false)
+	assertBillDeleted(t, db, otherPeriodID, false)
+}
+
 func createDashboardStatsSubscription(t *testing.T, db *gorm.DB, status string, deleted bool) models.Subscription {
 	t.Helper()
 
@@ -107,6 +146,43 @@ func createDashboardStatsSubscription(t *testing.T, db *gorm.DB, status string, 
 	}
 
 	return subscription
+}
+
+func createBillForDeletePeriodTest(t *testing.T, db *gorm.DB, status string, periodYear *int, periodMonth *int, billDate time.Time) uuid.UUID {
+	t.Helper()
+
+	id := uuid.New()
+	bill := models.Bill{
+		ID:             id,
+		PublicID:       uuid.NewString(),
+		SubscriptionID: uuid.New(),
+		CustomerID:     uuid.New(),
+		BillDate:       billDate,
+		DueDate:        billDate.AddDate(0, 0, 10),
+		Status:         status,
+		PeriodYear:     periodYear,
+		PeriodMonth:    periodMonth,
+	}
+	if err := db.Create(&bill).Error; err != nil {
+		t.Fatalf("create bill: %v", err)
+	}
+	return id
+}
+
+func assertBillDeleted(t *testing.T, db *gorm.DB, id uuid.UUID, wantDeleted bool) {
+	t.Helper()
+
+	var bill models.Bill
+	if err := db.Unscoped().First(&bill, "id = ?", id).Error; err != nil {
+		t.Fatalf("find bill %s: %v", id, err)
+	}
+	if bill.DeletedAt.Valid != wantDeleted {
+		t.Fatalf("bill %s deleted = %v, want %v", id, bill.DeletedAt.Valid, wantDeleted)
+	}
+}
+
+func intPtr(value int) *int {
+	return &value
 }
 
 func createDashboardStatsBill(t *testing.T, db *gorm.DB, subscriptionID uuid.UUID, status string, billDate time.Time, dueDate time.Time) {

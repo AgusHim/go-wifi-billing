@@ -19,7 +19,7 @@ type BillRepository interface {
 	Create(bill *models.Bill) error
 	Update(bill *models.Bill) error
 	Delete(id string) error
-	DeleteUnpaidByBillDateRange(startDate time.Time, endDate time.Time) (int64, error)
+	DeleteNonPaidByPeriod(year int, month int, startDate time.Time, endDate time.Time) (int64, error)
 	FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error)
 	FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID, month int, year int) (*models.Bill, error)
 	FindBillBySubscriptionAndPeriod(subscriptionID uuid.UUID, year int, month int) (*models.Bill, error)
@@ -163,9 +163,16 @@ func (r *billRepository) Delete(id string) error {
 	return r.db.Delete(&models.Bill{}, "id = ?", id).Error
 }
 
-func (r *billRepository) DeleteUnpaidByBillDateRange(startDate time.Time, endDate time.Time) (int64, error) {
+func (r *billRepository) DeleteNonPaidByPeriod(year int, month int, startDate time.Time, endDate time.Time) (int64, error) {
 	result := r.db.
-		Where("LOWER(status) = ? AND bill_date >= ? AND bill_date < ?", "unpaid", startDate, endDate).
+		Where("LOWER(status) <> ?", "paid").
+		Where(
+			"(period_year = ? AND period_month = ?) OR (period_year IS NULL AND period_month IS NULL AND bill_date >= ? AND bill_date < ?)",
+			year,
+			month,
+			startDate,
+			endDate,
+		).
 		Delete(&models.Bill{})
 
 	return result.RowsAffected, result.Error
