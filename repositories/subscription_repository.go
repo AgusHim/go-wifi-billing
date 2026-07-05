@@ -11,7 +11,7 @@ import (
 
 type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
-	FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string) ([]models.Subscription, int64, error)
+	FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string, coverageIDs []uuid.UUID) ([]models.Subscription, int64, error)
 	FindForBill(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
 	FindAutoRenewCandidates(threshold time.Time, renewalMode string) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
@@ -33,7 +33,7 @@ func (r *subscriptionRepository) Create(subscription *models.Subscription) error
 	return r.db.Create(subscription).Error
 }
 
-func (r *subscriptionRepository) FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string) ([]models.Subscription, int64, error) {
+func (r *subscriptionRepository) FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string, coverageIDs []uuid.UUID) ([]models.Subscription, int64, error) {
 	var (
 		subscriptions []models.Subscription
 		total         int64
@@ -74,6 +74,10 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 		query = query.Joins("JOIN customers AS active_customers ON active_customers.id = subscriptions.customer_id").
 			Where("active_customers.deleted_at IS NULL")
 	}
+	if len(coverageIDs) > 0 {
+		query = query.Joins("JOIN customers AS coverage_customers ON coverage_customers.id = subscriptions.customer_id").
+			Where("coverage_customers.coverage_id IN ?", coverageIDs)
+	}
 
 	// Filter by CustomerID
 	if customerID != nil && *customerID != "" {
@@ -99,8 +103,8 @@ func (r *subscriptionRepository) FindAll(page, limit int, search string, custome
 	// Search by related user name or email
 	if search != "" {
 		searchPattern := "%" + search + "%"
-		query = query.Joins("JOIN customers ON customers.id = subscriptions.customer_id").
-			Joins("JOIN users ON users.id = customers.user_id").
+		query = query.Joins("JOIN customers AS search_customers ON search_customers.id = subscriptions.customer_id").
+			Joins("JOIN users ON users.id = search_customers.user_id").
 			Where("LOWER(users.name) LIKE LOWER(?) OR LOWER(users.email) LIKE LOWER(?)", searchPattern, searchPattern)
 	}
 

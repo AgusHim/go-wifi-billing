@@ -16,7 +16,7 @@ import (
 
 type ServiceAccountService interface {
 	Create(input *models.ServiceAccount) (*models.ServiceAccount, error)
-	GetAll(subscriptionID string) ([]models.ServiceAccount, error)
+	GetAll(subscriptionID string, coverageIDs []string) ([]models.ServiceAccount, error)
 	GetByID(id uuid.UUID) (*models.ServiceAccount, error)
 	GetStatusHistory(id uuid.UUID, limit int) ([]models.ServiceStatusHistory, error)
 	Update(id uuid.UUID, input *models.ServiceAccount) (*models.ServiceAccount, error)
@@ -74,11 +74,23 @@ func (s *serviceAccountService) Create(input *models.ServiceAccount) (*models.Se
 	return sanitizeServiceAccount(created), nil
 }
 
-func (s *serviceAccountService) GetAll(subscriptionID string) ([]models.ServiceAccount, error) {
+func (s *serviceAccountService) GetAll(subscriptionID string, coverageIDs []string) ([]models.ServiceAccount, error) {
 	var accounts []models.ServiceAccount
 	var err error
+	var parsedCoverageIDs []uuid.UUID
+	for _, cid := range coverageIDs {
+		cid = strings.TrimSpace(cid)
+		if cid == "" {
+			continue
+		}
+		id, parseErr := uuid.Parse(cid)
+		if parseErr != nil {
+			return nil, errors.New("invalid coverage_id")
+		}
+		parsedCoverageIDs = append(parsedCoverageIDs, id)
+	}
 	if strings.TrimSpace(subscriptionID) == "" {
-		accounts, err = s.repo.FindAll()
+		accounts, err = s.repo.FindAll(parsedCoverageIDs)
 	} else {
 		accounts, err = s.repo.FindBySubscriptionID(subscriptionID)
 	}

@@ -13,7 +13,7 @@ import (
 
 type SubscriptionService interface {
 	Create(subscription *models.Subscription) error
-	GetAll(page int, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string) ([]models.Subscription, int64, error)
+	GetAll(page int, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string, coverageIDs []string) ([]models.Subscription, int64, error)
 	GetByID(id uuid.UUID) (*models.Subscription, error)
 	FindByCustomerID(customerID string) ([]models.Subscription, error)
 	Update(id uuid.UUID, input *models.Subscription) (*models.Subscription, error)
@@ -63,8 +63,21 @@ func (s *subscriptionService) Create(subscription *models.Subscription) error {
 	return s.repo.Create(subscription)
 }
 
-func (s *subscriptionService) GetAll(page int, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string) ([]models.Subscription, int64, error) {
-	items, total, err := s.repo.FindAll(page, limit, search, customerID, status, customerDeleted, endDateFilter)
+func (s *subscriptionService) GetAll(page int, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string, coverageIDs []string) ([]models.Subscription, int64, error) {
+	var parsedCoverageIDs []uuid.UUID
+	for _, cid := range coverageIDs {
+		cid = strings.TrimSpace(cid)
+		if cid == "" {
+			continue
+		}
+		id, err := uuid.Parse(cid)
+		if err != nil {
+			return nil, 0, errors.New("invalid coverage_id")
+		}
+		parsedCoverageIDs = append(parsedCoverageIDs, id)
+	}
+
+	items, total, err := s.repo.FindAll(page, limit, search, customerID, status, customerDeleted, endDateFilter, parsedCoverageIDs)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -83,7 +96,7 @@ func (s *subscriptionService) GetByID(id uuid.UUID) (*models.Subscription, error
 }
 func (s *subscriptionService) FindByCustomerID(customerID string) ([]models.Subscription, error) {
 	customerIDPtr := &customerID
-	subs, _, err := s.repo.FindAll(1, 9999, "", customerIDPtr, nil, nil, nil)
+	subs, _, err := s.repo.FindAll(1, 9999, "", customerIDPtr, nil, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}

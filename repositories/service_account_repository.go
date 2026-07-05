@@ -9,7 +9,7 @@ import (
 
 type ServiceAccountRepository interface {
 	Create(account *models.ServiceAccount) error
-	FindAll() ([]models.ServiceAccount, error)
+	FindAll(coverageIDs []uuid.UUID) ([]models.ServiceAccount, error)
 	FindBySubscriptionID(subscriptionID string) ([]models.ServiceAccount, error)
 	FindByID(id uuid.UUID) (*models.ServiceAccount, error)
 	Update(account *models.ServiceAccount) error
@@ -29,9 +29,9 @@ func (r *serviceAccountRepository) Create(account *models.ServiceAccount) error 
 	return r.db.Create(account).Error
 }
 
-func (r *serviceAccountRepository) FindAll() ([]models.ServiceAccount, error) {
+func (r *serviceAccountRepository) FindAll(coverageIDs []uuid.UUID) ([]models.ServiceAccount, error) {
 	var accounts []models.ServiceAccount
-	err := r.db.
+	query := r.db.
 		Preload("Router").
 		Preload("Subscription").
 		Preload("Subscription.NetworkPlan").
@@ -41,8 +41,13 @@ func (r *serviceAccountRepository) FindAll() ([]models.ServiceAccount, error) {
 		Preload("Subscription.Customer.Coverage").
 		Preload("NetworkPlan").
 		Preload("NetworkPlan.Router").
-		Order("created_at desc").
-		Find(&accounts).Error
+		Order("service_accounts.created_at desc")
+	if len(coverageIDs) > 0 {
+		query = query.Joins("JOIN subscriptions ON subscriptions.id = service_accounts.subscription_id").
+			Joins("JOIN customers ON customers.id = subscriptions.customer_id").
+			Where("customers.coverage_id IN ?", coverageIDs)
+	}
+	err := query.Find(&accounts).Error
 	return accounts, err
 }
 

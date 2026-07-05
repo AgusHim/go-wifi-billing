@@ -116,10 +116,22 @@ func (c *NOCController) GetRouterInterfaces(ctx *fiber.Ctx) error {
 func (c *NOCController) GetCustomers(ctx *fiber.Ctx) error {
 	status := ctx.Query("status", "")
 	routerID := ctx.Query("router_id", "")
-	coverageID := ctx.Query("coverage_id", "")
+	var coverageIDs []string
+	ctx.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		k := string(key)
+		v := strings.TrimSpace(string(value))
+		if (k == "coverage_ids" || k == "coverage_ids[]") && v != "" {
+			coverageIDs = append(coverageIDs, v)
+		}
+	})
+	if len(coverageIDs) == 0 {
+		if coverageID := strings.TrimSpace(ctx.Query("coverage_id", "")); coverageID != "" {
+			coverageIDs = []string{coverageID}
+		}
+	}
 	packageID := ctx.Query("package_id", "")
 	limit := ctx.QueryInt("limit", 200)
-	result, err := c.service.GetCustomers(status, routerID, coverageID, packageID, limit)
+	result, err := c.service.GetCustomers(status, routerID, coverageIDs, packageID, limit)
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

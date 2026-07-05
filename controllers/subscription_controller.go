@@ -63,6 +63,19 @@ func (c *SubscriptionController) GetAll(ctx *fiber.Ctx) error {
 	search := ctx.Query("search", "")
 	customerDeleted := ctx.Query("customer_deleted", "")
 	endDate := ctx.Query("end_date", "")
+	var coverageIDs []string
+	ctx.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		k := string(key)
+		v := strings.TrimSpace(string(value))
+		if (k == "coverage_ids" || k == "coverage_ids[]") && v != "" {
+			coverageIDs = append(coverageIDs, v)
+		}
+	})
+	if len(coverageIDs) == 0 {
+		if coverageID := strings.TrimSpace(ctx.Query("coverage_id", "")); coverageID != "" {
+			coverageIDs = []string{coverageID}
+		}
+	}
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
@@ -80,8 +93,11 @@ func (c *SubscriptionController) GetAll(ctx *fiber.Ctx) error {
 		endDateFilter = &endDate
 	}
 
-	subscriptions, total, err := c.service.GetAll(page, limit, search, &customerID, &status, &customerDeleted, endDateFilter)
+	subscriptions, total, err := c.service.GetAll(page, limit, search, &customerID, &status, &customerDeleted, endDateFilter, coverageIDs)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "invalid coverage_id") {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{

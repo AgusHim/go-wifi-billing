@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
@@ -34,8 +35,24 @@ func (c *ServiceAccountController) RegisterRoutes(router fiber.Router) {
 
 func (c *ServiceAccountController) GetAll(ctx *fiber.Ctx) error {
 	subscriptionID := ctx.Query("subscription_id", "")
-	items, err := c.service.GetAll(subscriptionID)
+	var coverageIDs []string
+	ctx.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		k := string(key)
+		v := strings.TrimSpace(string(value))
+		if (k == "coverage_ids" || k == "coverage_ids[]") && v != "" {
+			coverageIDs = append(coverageIDs, v)
+		}
+	})
+	if len(coverageIDs) == 0 {
+		if coverageID := strings.TrimSpace(ctx.Query("coverage_id", "")); coverageID != "" {
+			coverageIDs = []string{coverageID}
+		}
+	}
+	items, err := c.service.GetAll(subscriptionID, coverageIDs)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "invalid coverage_id") {
+			return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": items, "message": "Success get data"})

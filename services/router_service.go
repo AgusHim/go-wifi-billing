@@ -587,7 +587,7 @@ func (s *routerService) buildImportPreview(id uuid.UUID, mode string) (*RouterIm
 	if err != nil {
 		return nil, err
 	}
-	existingAccounts, err := s.serviceAccountRepo.FindAll()
+	existingAccounts, err := s.serviceAccountRepo.FindAll(nil)
 	if err != nil {
 		return nil, err
 	}

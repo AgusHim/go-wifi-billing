@@ -22,7 +22,7 @@ type NOCRepository interface {
 	GetLatestRouterSnapshots() ([]models.RouterSnapshot, error)
 	GetRouterSnapshots(routerID uuid.UUID, limit int) ([]models.RouterSnapshot, error)
 	GetRouterInterfaceSnapshots(routerID uuid.UUID, limit int) ([]models.RouterInterfaceSnapshot, error)
-	GetNOCServiceAccounts(status string, routerID *uuid.UUID, coverageID *uuid.UUID, packageID *uuid.UUID, limit int) ([]models.ServiceAccount, error)
+	GetNOCServiceAccounts(status string, routerID *uuid.UUID, coverageIDs []uuid.UUID, packageID *uuid.UUID, limit int) ([]models.ServiceAccount, error)
 	CountOnlineSessionsSince(since time.Time) (int64, error)
 	CountOnlineSessionsByTypeSince(serviceType string, since time.Time) (int64, error)
 	GetRecentInterfaceIssues(since time.Time, limit int) ([]models.RouterInterfaceSnapshot, error)
@@ -181,7 +181,7 @@ func (r *nocRepository) GetRouterInterfaceSnapshots(routerID uuid.UUID, limit in
 	return snapshots, err
 }
 
-func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID, coverageID *uuid.UUID, packageID *uuid.UUID, limit int) ([]models.ServiceAccount, error) {
+func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID, coverageIDs []uuid.UUID, packageID *uuid.UUID, limit int) ([]models.ServiceAccount, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
@@ -210,10 +210,10 @@ func (r *nocRepository) GetNOCServiceAccounts(status string, routerID *uuid.UUID
 			*routerID,
 		)
 	}
-	if coverageID != nil {
+	if len(coverageIDs) > 0 {
 		query = query.Where(
-			"subscription_id IN (SELECT subscriptions.id FROM subscriptions JOIN customers ON customers.id = subscriptions.customer_id WHERE customers.coverage_id = ?)",
-			*coverageID,
+			"subscription_id IN (SELECT subscriptions.id FROM subscriptions JOIN customers ON customers.id = subscriptions.customer_id WHERE customers.coverage_id IN ?)",
+			coverageIDs,
 		)
 	}
 	if packageID != nil {

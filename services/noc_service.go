@@ -125,7 +125,7 @@ type NOCService interface {
 	GetRouters() ([]NOCRouterOverview, error)
 	GetRouterSnapshots(id uuid.UUID, limit int) ([]models.RouterSnapshot, error)
 	GetRouterInterfaces(id uuid.UUID, limit int) ([]models.RouterInterfaceSnapshot, error)
-	GetCustomers(status string, routerID string, coverageID string, packageID string, limit int) ([]NOCCustomerRow, error)
+	GetCustomers(status string, routerID string, coverageIDs []string, packageID string, limit int) ([]NOCCustomerRow, error)
 	GetReconciliationFindings(status string) ([]models.ReconciliationFinding, error)
 	ResolveReconciliationFinding(id uuid.UUID) error
 	GetMetrics() (*NOCMetrics, error)
@@ -171,7 +171,7 @@ func (s *nocService) CollectAll() (*NOCCollectionSummary, error) {
 		return nil, err
 	}
 
-	accounts, err := s.serviceAccountRepo.FindAll()
+	accounts, err := s.serviceAccountRepo.FindAll(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -526,7 +526,7 @@ func (s *nocService) GetOverview() (*NOCOverview, error) {
 	return overview, nil
 }
 
-func (s *nocService) GetCustomers(status string, routerID string, coverageID string, packageID string, limit int) ([]NOCCustomerRow, error) {
+func (s *nocService) GetCustomers(status string, routerID string, coverageIDs []string, packageID string, limit int) ([]NOCCustomerRow, error) {
 	var parsedRouterID *uuid.UUID
 	if strings.TrimSpace(routerID) != "" {
 		id, err := uuid.Parse(routerID)
@@ -535,13 +535,17 @@ func (s *nocService) GetCustomers(status string, routerID string, coverageID str
 		}
 		parsedRouterID = &id
 	}
-	var parsedCoverageID *uuid.UUID
-	if strings.TrimSpace(coverageID) != "" {
+	var parsedCoverageIDs []uuid.UUID
+	for _, coverageID := range coverageIDs {
+		coverageID = strings.TrimSpace(coverageID)
+		if coverageID == "" {
+			continue
+		}
 		id, err := uuid.Parse(coverageID)
 		if err != nil {
 			return nil, errors.New("invalid coverage_id")
 		}
-		parsedCoverageID = &id
+		parsedCoverageIDs = append(parsedCoverageIDs, id)
 	}
 	var parsedPackageID *uuid.UUID
 	if strings.TrimSpace(packageID) != "" {
@@ -551,7 +555,7 @@ func (s *nocService) GetCustomers(status string, routerID string, coverageID str
 		}
 		parsedPackageID = &id
 	}
-	items, err := s.nocRepo.GetNOCServiceAccounts(strings.TrimSpace(status), parsedRouterID, parsedCoverageID, parsedPackageID, limit)
+	items, err := s.nocRepo.GetNOCServiceAccounts(strings.TrimSpace(status), parsedRouterID, parsedCoverageIDs, parsedPackageID, limit)
 	if err != nil {
 		return nil, err
 	}
