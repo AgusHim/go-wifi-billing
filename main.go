@@ -25,7 +25,7 @@ func main() {
 	log.Printf("dsn: %s", dsn)
 
 	midtrans_server := os.Getenv("MIDTRANS_SERVER_KEY")
-	log.Printf("midtrans_server: %s", midtrans_server)
+	log.Printf("midtrans_server_configured: %t", midtrans_server != "")
 
 	gormDB, err := db.InitDB(dsn)
 	if err != nil {
@@ -123,6 +123,7 @@ func main() {
 	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc, customerSvc, renewalSvc)
 	renewalSvc.StartScheduler()
 	billSvc := services.NewBillService(billRepo, subscriptionRepo, waSvc, billingProvisioningSvc)
+	billSvc.StartOverdueScheduler()
 	billCtrl := controllers.NewBillController(billSvc)
 
 	complainRepo := repositories.NewComplainRepository(gormDB)

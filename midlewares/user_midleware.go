@@ -53,3 +53,30 @@ func UserProtected() fiber.Handler {
 		return c.Next()
 	}
 }
+
+func RequireRoles(allowed ...string) fiber.Handler {
+	roles := make(map[string]bool, len(allowed))
+	for _, role := range allowed {
+		roles[strings.ToLower(strings.TrimSpace(role))] = true
+	}
+
+	return func(c *fiber.Ctx) error {
+		userClaims, ok := c.Locals("user").(jwt.MapClaims)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"success": false,
+				"message": "unauthorized",
+			})
+		}
+
+		role, _ := userClaims["role"].(string)
+		if !roles[strings.ToLower(strings.TrimSpace(role))] {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"success": false,
+				"message": "forbidden",
+			})
+		}
+
+		return c.Next()
+	}
+}

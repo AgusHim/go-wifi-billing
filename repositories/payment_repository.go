@@ -17,6 +17,7 @@ type PaymentRepository interface {
 	Delete(id string) error
 	FindByUserID(userID string) ([]models.Payment, error)
 	FindActiveByBillID(billID uuid.UUID) (*models.Payment, error)
+	ExpirePendingByBillID(billID uuid.UUID, referenceTime time.Time) (int64, error)
 }
 
 type paymentRepository struct {
@@ -108,12 +109,22 @@ func (r *paymentRepository) Delete(id string) error {
 func (r *paymentRepository) FindActiveByBillID(billID uuid.UUID) (*models.Payment, error) {
 	var payment models.Payment
 	err := r.db.
-		Where("bill_id = ? AND LOWER(status) IN ?", billID, []string{"confirmed", "pending"}).
+		Where("bill_id = ? AND (LOWER(status) = ? OR (LOWER(status) = ? AND expired_date > ?))", billID, "confirmed", "pending", time.Now()).
 		First(&payment).Error
 	if err != nil {
 		return nil, err
 	}
 	return &payment, nil
+}
+
+func (r *paymentRepository) ExpirePendingByBillID(billID uuid.UUID, referenceTime time.Time) (int64, error) {
+	result := r.db.Model(&models.Payment{}).
+		Where("bill_id = ? AND LOWER(status) = ? AND expired_date <= ?", billID, "pending", referenceTime).
+		Updates(map[string]interface{}{
+			"status":     "expired",
+			"updated_at": referenceTime,
+		})
+	return result.RowsAffected, result.Error
 }
 
 func (r *paymentRepository) FindByUserID(userID string) ([]models.Payment, error) {

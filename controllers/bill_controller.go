@@ -3,6 +3,7 @@ package controllers
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
@@ -20,21 +21,26 @@ func (c *BillController) RegisterRoutes(router fiber.Router) {
 	api.Get("/:public_id", c.GetByPublicID)
 
 	user_api := router.Group("/user_api/bills")
-	user_api.Get("/", c.GetAll)
+	user_api.Get("/", middlewares.UserProtected(), c.GetAll)
 	user_api.Get("/me", middlewares.UserProtected(), c.GetByUserID)
 	user_api.Get("/public/:public_id", c.GetByPublicID)
 	admin_api := router.Group("/admin_api/bills")
-	admin_api.Get("/dashboard/stats", c.GetDashboardStats)
-	admin_api.Get("/dashboard/charts", middlewares.UserProtected(), c.GetDashboardCharts)
-	admin_api.Get("/recent/paid", c.GetRecentPaidBills)
-	admin_api.Get("/generate", c.GenerateMonthlyBills)
-	admin_api.Get("/send-reminders", c.SendReminders)
-	admin_api.Post("/create", c.Create)
-	admin_api.Get("/", middlewares.UserProtected(), c.GetAll)
-	admin_api.Get("/:id", c.GetByID)
-	admin_api.Put("/:id", c.Update)
-	admin_api.Delete("/generated/current-month/unpaid", c.DeleteCurrentMonthUnpaidBills)
-	admin_api.Delete("/:id", c.Delete)
+	adminOnly := middlewares.RequireRoles("root", "admin")
+	billingOps := middlewares.RequireRoles("root", "admin", "loket", "petugas")
+	admin_api.Get("/dashboard/stats", middlewares.UserProtected(), billingOps, c.GetDashboardStats)
+	admin_api.Get("/dashboard/charts", middlewares.UserProtected(), billingOps, c.GetDashboardCharts)
+	admin_api.Get("/recent/paid", middlewares.UserProtected(), billingOps, c.GetRecentPaidBills)
+	admin_api.Get("/generate", middlewares.UserProtected(), billingOps, c.GenerateMonthlyBills)
+	admin_api.Post("/generate", middlewares.UserProtected(), billingOps, c.GenerateMonthlyBills)
+	admin_api.Post("/generate/dry-run", middlewares.UserProtected(), billingOps, c.PreviewMonthlyBills)
+	admin_api.Post("/mark-overdue", middlewares.UserProtected(), billingOps, c.MarkOverdueBills)
+	admin_api.Get("/send-reminders", middlewares.UserProtected(), billingOps, c.SendReminders)
+	admin_api.Post("/create", middlewares.UserProtected(), billingOps, c.Create)
+	admin_api.Get("/", middlewares.UserProtected(), billingOps, c.GetAll)
+	admin_api.Get("/:id", middlewares.UserProtected(), billingOps, c.GetByID)
+	admin_api.Put("/:id", middlewares.UserProtected(), billingOps, c.Update)
+	admin_api.Delete("/generated/current-month/unpaid", middlewares.UserProtected(), adminOnly, c.DeleteCurrentMonthUnpaidBills)
+	admin_api.Delete("/:id", middlewares.UserProtected(), adminOnly, c.Delete)
 }
 
 func NewBillController(service services.BillService) *BillController {
@@ -230,10 +236,57 @@ func (c *BillController) DeleteCurrentMonthUnpaidBills(ctx *fiber.Ctx) error {
 }
 
 func (c *BillController) GenerateMonthlyBills(ctx *fiber.Ctx) error {
-	if err := c.service.GenerateMonthlyBills(); err != nil {
+	var input struct {
+		Period string `json:"period"`
+	}
+	if len(ctx.Body()) > 0 {
+		if err := ctx.BodyParser(&input); err != nil {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+	}
+
+	result, err := c.service.GenerateMonthlyBillsForPeriod(input.Period)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "invalid period format") {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
-	return ctx.JSON(fiber.Map{"success": true, "message": "Monthly bills generated successfully"})
+	return ctx.JSON(fiber.Map{"success": true, "data": result, "message": "Monthly bills generated successfully"})
+}
+
+func (c *BillController) PreviewMonthlyBills(ctx *fiber.Ctx) error {
+	var input struct {
+		Period string `json:"period"`
+	}
+	if len(ctx.Body()) > 0 {
+		if err := ctx.BodyParser(&input); err != nil {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+	}
+
+	result, err := c.service.PreviewMonthlyBills(input.Period)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "invalid period format") {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": result, "message": "Monthly bill dry-run completed"})
+}
+
+func (c *BillController) MarkOverdueBills(ctx *fiber.Ctx) error {
+	updated, err := c.service.MarkOverdueBills(time.Now(), 1000)
+	if err != nil {
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"updated_count": updated,
+		},
+		"message": "Overdue bills marked successfully",
+	})
 }
 
 func (c *BillController) SendReminders(ctx *fiber.Ctx) error {

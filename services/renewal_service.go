@@ -81,7 +81,7 @@ func (s *renewalService) GenerateAutoRenewInvoices(referenceTime time.Time) (int
 	for _, sub := range candidates {
 		targetMonth := int(sub.EndDate.Month())
 		targetYear := sub.EndDate.Year()
-		existing, err := s.billRepo.FindBillBySubscriptionAndMonth(sub.ID, targetMonth, targetYear)
+		existing, err := s.billRepo.FindBillBySubscriptionAndPeriod(sub.ID, targetYear, targetMonth)
 		if err == nil && existing != nil {
 			continue
 		}
@@ -227,9 +227,15 @@ func buildRenewalBill(sub models.Subscription, referenceTime time.Time) (*models
 
 	targetMonth := sub.EndDate.Month()
 	targetYear := sub.EndDate.Year()
-	dueDate := time.Date(targetYear, targetMonth, sub.DueDay, 23, 59, 59, 0, time.Local)
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.FixedZone("WIB", 7*60*60)
+	}
+	periodStart := time.Date(targetYear, targetMonth, 1, 0, 0, 0, 0, loc)
+	periodEnd := periodStart.AddDate(0, 1, 0).Add(-time.Second)
+	dueDate := time.Date(targetYear, targetMonth, sub.DueDay, 23, 59, 59, 0, loc)
 	if dueDate.Month() != targetMonth {
-		dueDate = time.Date(targetYear, targetMonth+1, 1, 23, 59, 59, 0, time.Local).AddDate(0, 0, -1)
+		dueDate = time.Date(targetYear, targetMonth+1, 1, 23, 59, 59, 0, loc).AddDate(0, 0, -1)
 	}
 
 	amount := sub.Package.Price
@@ -247,7 +253,9 @@ func buildRenewalBill(sub models.Subscription, referenceTime time.Time) (*models
 		amount += uniqueCode
 	}
 
-	return &models.Bill{
+	periodYear := targetYear
+	periodMonth := int(targetMonth)
+	bill := &models.Bill{
 		ID:             uuid.New(),
 		PublicID:       fmt.Sprintf("%d%02d-%s", targetYear, targetMonth, uuid.NewString()[:6]),
 		SubscriptionID: sub.ID,
@@ -258,9 +266,17 @@ func buildRenewalBill(sub models.Subscription, referenceTime time.Time) (*models
 		PPN:            ppn,
 		UniqueCode:     uniqueCode,
 		Status:         "unpaid",
+		PeriodYear:     &periodYear,
+		PeriodMonth:    &periodMonth,
+		PeriodStart:    &periodStart,
+		PeriodEnd:      &periodEnd,
+		Source:         "auto_renewal",
+		StatusReason:   "auto renewal invoice",
 		CreatedAt:      referenceTime,
 		UpdatedAt:      referenceTime,
-	}, nil
+	}
+	applyBillSnapshot(bill, &sub)
+	return bill, nil
 }
 
 func renewalAutogenEnabled() bool {

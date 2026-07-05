@@ -22,7 +22,9 @@ type BillRepository interface {
 	DeleteUnpaidByBillDateRange(startDate time.Time, endDate time.Time) (int64, error)
 	FindBillByCustomerAndMonth(customerID string, month int, year int) (*models.Bill, error)
 	FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID, month int, year int) (*models.Bill, error)
+	FindBillBySubscriptionAndPeriod(subscriptionID uuid.UUID, year int, month int) (*models.Bill, error)
 	FindUnpaidBills() ([]models.Bill, error)
+	FindUnpaidOverdueBills(referenceTime time.Time, limit int) ([]models.Bill, error)
 	GetDashboardStats(month, year int, adminID *uuid.UUID) (map[string]int64, error)
 	GetRecentPaidBills(limit int) ([]models.Bill, error)
 	GetDashboardChartRows(fromDate time.Time, adminID *uuid.UUID) ([]models.Bill, error)
@@ -199,6 +201,26 @@ func (r *billRepository) FindBillBySubscriptionAndMonth(subscriptionID uuid.UUID
 	return &bill, nil
 }
 
+func (r *billRepository) FindBillBySubscriptionAndPeriod(subscriptionID uuid.UUID, year int, month int) (*models.Bill, error) {
+	var bill models.Bill
+	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
+	endOfMonth := startOfMonth.AddDate(0, 1, 0)
+	err := r.db.
+		Where("subscription_id = ?", subscriptionID).
+		Where(
+			"(period_year = ? AND period_month = ?) OR (period_year IS NULL AND period_month IS NULL AND bill_date >= ? AND bill_date < ?)",
+			year,
+			month,
+			startOfMonth,
+			endOfMonth,
+		).
+		First(&bill).Error
+	if err != nil {
+		return nil, err
+	}
+	return &bill, nil
+}
+
 func (r *billRepository) FindUnpaidBills() ([]models.Bill, error) {
 	var bills []models.Bill
 	err := r.db.
@@ -208,6 +230,22 @@ func (r *billRepository) FindUnpaidBills() ([]models.Bill, error) {
 		Preload("Subscription.Package").
 		Where("status = ?", "unpaid").
 		Find(&bills).Error
+	return bills, err
+}
+
+func (r *billRepository) FindUnpaidOverdueBills(referenceTime time.Time, limit int) ([]models.Bill, error) {
+	var bills []models.Bill
+	query := r.db.
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Subscription").
+		Preload("Subscription.Package").
+		Where("LOWER(status) = ? AND due_date < ?", "unpaid", referenceTime).
+		Order("due_date ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	err := query.Find(&bills).Error
 	return bills, err
 }
 
