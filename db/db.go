@@ -68,6 +68,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.ProvisioningLog{},
 		&models.Bill{},
 		&models.Payment{},
+		&models.PaymentCallbackLog{},
+		&models.BillingAutomationRun{},
 		&models.Customer{},
 		&models.Complain{},
 		&models.WhatsAppTemplate{},

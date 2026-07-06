@@ -256,8 +256,18 @@ func (c *PaymentController) MidtransCallback(ctx *fiber.Ctx) error {
 		StatusCode        string `json:"status_code"`
 	}
 
+	rawPayload := string(ctx.Body())
+	receivedAt := time.Now()
 	var payload NotificationPayload
 	if err := ctx.BodyParser(&payload); err != nil {
+		processedAt := time.Now()
+		_ = c.service.RecordPaymentCallbackLog(services.PaymentCallbackLogInput{
+			Provider:     "midtrans",
+			RawPayload:   rawPayload,
+			ReceivedAt:   receivedAt,
+			ProcessedAt:  &processedAt,
+			ErrorMessage: "invalid callback payload: " + err.Error(),
+		})
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"success": false,
 			"message": "Invalid callback payload",
@@ -265,7 +275,21 @@ func (c *PaymentController) MidtransCallback(ctx *fiber.Ctx) error {
 	}
 
 	expectedSig := lib.GenerateSignature(payload.OrderID, payload.StatusCode, payload.GrossAmount)
-	if expectedSig != payload.SignatureKey {
+	signatureValid := expectedSig == payload.SignatureKey
+	if !signatureValid {
+		processedAt := time.Now()
+		_ = c.service.RecordPaymentCallbackLog(services.PaymentCallbackLogInput{
+			Provider:          "midtrans",
+			OrderID:           payload.OrderID,
+			TransactionStatus: payload.TransactionStatus,
+			FraudStatus:       payload.FraudStatus,
+			GrossAmount:       payload.GrossAmount,
+			SignatureValid:    false,
+			RawPayload:        rawPayload,
+			ReceivedAt:        receivedAt,
+			ProcessedAt:       &processedAt,
+			ErrorMessage:      "invalid signature key",
+		})
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"success": false,
 			"message": "Invalid signature key",
@@ -273,6 +297,23 @@ func (c *PaymentController) MidtransCallback(ctx *fiber.Ctx) error {
 	}
 
 	err := c.service.HandleMindtransCallback(payload.OrderID, payload.TransactionStatus, payload.GrossAmount, payload.FraudStatus)
+	processedAt := time.Now()
+	errorMessage := ""
+	if err != nil {
+		errorMessage = err.Error()
+	}
+	_ = c.service.RecordPaymentCallbackLog(services.PaymentCallbackLogInput{
+		Provider:          "midtrans",
+		OrderID:           payload.OrderID,
+		TransactionStatus: payload.TransactionStatus,
+		FraudStatus:       payload.FraudStatus,
+		GrossAmount:       payload.GrossAmount,
+		SignatureValid:    signatureValid,
+		RawPayload:        rawPayload,
+		ReceivedAt:        receivedAt,
+		ProcessedAt:       &processedAt,
+		ErrorMessage:      errorMessage,
+	})
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,

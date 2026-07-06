@@ -1,6 +1,9 @@
 package services
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/repositories"
 	"github.com/google/uuid"
@@ -8,7 +11,7 @@ import (
 
 type OdpService interface {
 	Create(odp *models.Odp) error
-	GetAll() ([]models.Odp, error)
+	GetAll(coverageIDs []string) ([]models.Odp, error)
 	GetByID(id uuid.UUID) (*models.Odp, error)
 	Update(id uuid.UUID, input *models.Odp) (*models.Odp, error)
 	Delete(id uuid.UUID) error
@@ -26,8 +29,20 @@ func (s *odpService) Create(odp *models.Odp) error {
 	return s.repo.Create(odp)
 }
 
-func (s *odpService) GetAll() ([]models.Odp, error) {
-	return s.repo.FindAll()
+func (s *odpService) GetAll(coverageIDs []string) ([]models.Odp, error) {
+	var parsedCoverageIDs []uuid.UUID
+	for _, cid := range coverageIDs {
+		cid = strings.TrimSpace(cid)
+		if cid == "" {
+			continue
+		}
+		id, err := uuid.Parse(cid)
+		if err != nil {
+			return nil, errors.New("invalid coverage_id")
+		}
+		parsedCoverageIDs = append(parsedCoverageIDs, id)
+	}
+	return s.repo.FindAll(parsedCoverageIDs)
 }
 
 func (s *odpService) GetByID(id uuid.UUID) (*models.Odp, error) {

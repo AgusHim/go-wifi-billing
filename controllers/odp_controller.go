@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"strings"
+
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -38,8 +40,27 @@ func (c *OdpController) Create(ctx *fiber.Ctx) error {
 }
 
 func (c *OdpController) GetAll(ctx *fiber.Ctx) error {
-	odps, err := c.service.GetAll()
+	var coverageIDs []string
+	for k, values := range ctx.Queries() {
+		if (k == "coverage_ids" || k == "coverage_ids[]") && values != "" {
+			for _, v := range strings.Split(values, ",") {
+				if trimmed := strings.TrimSpace(v); trimmed != "" {
+					coverageIDs = append(coverageIDs, trimmed)
+				}
+			}
+		}
+	}
+	if len(coverageIDs) == 0 {
+		if coverageID := strings.TrimSpace(ctx.Query("coverage_id", "")); coverageID != "" {
+			coverageIDs = append(coverageIDs, coverageID)
+		}
+	}
+
+	odps, err := c.service.GetAll(coverageIDs)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "invalid coverage_id") {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
 	return ctx.JSON(fiber.Map{"success": true, "data": odps, "message": "Success get data"})

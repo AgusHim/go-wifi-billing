@@ -87,6 +87,7 @@ func main() {
 	waSvc := services.NewWhatsAppService(whatsappBaseURL, whatsappAPIKey)
 
 	billRepo := repositories.NewBillRepository(gormDB)
+	billingAutomationRunRepo := repositories.NewBillingAutomationRunRepository(gormDB)
 	provisioningJobRepo := repositories.NewProvisioningJobRepository(gormDB)
 	provisioningLogRepo := repositories.NewProvisioningLogRepository(gormDB)
 	routerSvc := services.NewRouterService(
@@ -113,6 +114,8 @@ func main() {
 	networkPlanCtrl := controllers.NewNetworkPlanController(networkPlanSvc)
 	voucherSvc := services.NewVoucherService(voucherBatchRepo, voucherRepo, provisioningJobRepo, provisioningLogRepo, routerRepo)
 	voucherCtrl := controllers.NewVoucherController(voucherSvc)
+	provisioningWorkerSvc := services.NewProvisioningWorkerService(provisioningJobRepo, serviceAccountSvc, voucherSvc)
+	provisioningWorkerSvc.StartScheduler()
 	whatsappCtrl := controllers.NewWhatsAppController(waSvc)
 	waTemplateRepo := repositories.NewWhatsAppTemplateRepository(gormDB)
 	waTemplateSvc := services.NewWhatsAppTemplateService(waTemplateRepo)
@@ -122,7 +125,7 @@ func main() {
 	renewalCtrl := controllers.NewRenewalController(renewalSvc)
 	subscriptionCtrl := controllers.NewSubscriptionController(subscriptionSvc, customerSvc, renewalSvc)
 	renewalSvc.StartScheduler()
-	billSvc := services.NewBillService(billRepo, subscriptionRepo, waSvc, billingProvisioningSvc)
+	billSvc := services.NewBillService(billRepo, subscriptionRepo, billingAutomationRunRepo, waSvc, billingProvisioningSvc)
 	billSvc.StartOverdueScheduler()
 	billCtrl := controllers.NewBillController(billSvc)
 
@@ -131,7 +134,7 @@ func main() {
 	complainCtrl := controllers.NewComplainController(complainSvc)
 
 	paymentRepo := repositories.NewPaymentRepository(gormDB)
-	paymentSvc := services.NewPaymentService(paymentRepo, subscriptionRepo, billRepo, billingProvisioningSvc, renewalSvc)
+	paymentSvc := services.NewPaymentService(paymentRepo, subscriptionRepo, billRepo, billingProvisioningSvc, renewalSvc, gormDB)
 	paymentCtrl := controllers.NewPaymentController(paymentSvc)
 
 	expenseRepo := repositories.NewExpenseRepository(gormDB)

@@ -18,6 +18,7 @@ import (
 	"github.com/midtrans/midtrans-go"
 	"github.com/midtrans/midtrans-go/snap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PaymentService interface {
@@ -29,9 +30,23 @@ type PaymentService interface {
 	CreateMidtransTransaction(paymentID string) (*models.Payment, error)
 	CreateMidtransTransactionForUser(billID string, userID string) (*models.Payment, error)
 	HandleMindtransCallback(paymentID string, status string, grossAmount string, fraudStatus string) error
+	RecordPaymentCallbackLog(input PaymentCallbackLogInput) error
 	GetByUserID(userID string) ([]models.Payment, error)
 	BatchCreate(inputs []models.Payment) ([]models.Payment, error)
 	ExportCSV(adminID string, search string, status string, startAt string, endAt string) ([]byte, error)
+}
+
+type PaymentCallbackLogInput struct {
+	Provider          string
+	OrderID           string
+	TransactionStatus string
+	FraudStatus       string
+	GrossAmount       string
+	SignatureValid    bool
+	RawPayload        string
+	ReceivedAt        time.Time
+	ProcessedAt       *time.Time
+	ErrorMessage      string
 }
 
 type paymentService struct {
@@ -40,6 +55,7 @@ type paymentService struct {
 	billRepo               repositories.BillRepository
 	billingProvisioningSvc BillingProvisioningService
 	renewalSvc             RenewalService
+	db                     *gorm.DB
 }
 
 func NewPaymentService(
@@ -48,6 +64,7 @@ func NewPaymentService(
 	billRepo repositories.BillRepository,
 	billingProvisioningSvc BillingProvisioningService,
 	renewalSvc RenewalService,
+	db *gorm.DB,
 ) PaymentService {
 	env := os.Getenv("MIDTRANS_ENV")
 	if env == "sandbox" {
@@ -63,6 +80,7 @@ func NewPaymentService(
 		billRepo:               billRepo,
 		billingProvisioningSvc: billingProvisioningSvc,
 		renewalSvc:             renewalSvc,
+		db:                     db,
 	}
 }
 
@@ -119,18 +137,19 @@ func (s *paymentService) Create(input models.Payment) (*models.Payment, error) {
 	input.CreatedAt = time.Now()
 	input.UpdatedAt = time.Now()
 	applyPaymentSnapshot(&input, &bill)
-	err = s.repo.Create(&input)
-	if err != nil {
-		return nil, err
-	}
 
 	if strings.EqualFold(strings.TrimSpace(input.Status), "confirmed") {
-		nbill, nsubs, nerr := s.handleConfirmation(&input, &bill)
+		nbill, nsubs, nerr := s.confirmPaymentInTransaction(&input, &bill, true)
 		if nerr != nil {
 			return nil, nerr
 		}
 		input.Bill = *nbill
 		input.Bill.Subscription = *nsubs
+	} else {
+		err = s.repo.Create(&input)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &input, nil
 }
@@ -173,19 +192,19 @@ func (s *paymentService) Update(id string, input models.Payment) (*models.Paymen
 	payment.Status = input.Status
 	payment.UpdatedAt = time.Now()
 
-	err = s.repo.Update(&payment)
-	if err != nil {
-		return nil, err
-	}
-
 	// Update Bill And Subscription
 	if previousStatus != "confirmed" && strings.EqualFold(strings.TrimSpace(payment.Status), "confirmed") {
-		nbill, nsubs, nerr := s.handleConfirmation(&payment, &bill)
+		nbill, nsubs, nerr := s.confirmPaymentInTransaction(&payment, &bill, true)
 		if nerr != nil {
 			return nil, nerr
 		}
 		payment.Bill = *nbill
 		payment.Bill.Subscription = *nsubs
+	} else {
+		err = s.repo.Update(&payment)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &payment, nil
@@ -347,6 +366,99 @@ func (s *paymentService) handleConfirmation(payment *models.Payment, bill *model
 	return nbill, nsubs, nil
 }
 
+func (s *paymentService) confirmPaymentInTransaction(payment *models.Payment, bill *models.Bill, savePayment bool) (*models.Bill, *models.Subscription, error) {
+	if payment == nil {
+		return nil, nil, errors.New("payment is nil")
+	}
+	if bill == nil {
+		return nil, nil, errors.New("bill is nil")
+	}
+	if s.db == nil {
+		nbill, nsubs, err := s.handleConfirmation(payment, bill)
+		if err != nil {
+			return nil, nil, err
+		}
+		if savePayment {
+			if err := s.repo.Update(payment); err != nil {
+				return nil, nil, err
+			}
+		}
+		return nbill, nsubs, nil
+	}
+
+	var updatedBill models.Bill
+	var updatedSubscription models.Subscription
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		if savePayment {
+			payment.UpdatedAt = now
+			if err := tx.Omit(clause.Associations).Save(payment).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&updatedBill, "id = ?", bill.ID).Error; err != nil {
+			return err
+		}
+
+		if !strings.EqualFold(strings.TrimSpace(updatedBill.Status), "paid") {
+			updatedBill.Status = "paid"
+			if updatedBill.PaidAt == nil {
+				updatedBill.PaidAt = &now
+			}
+			updatedBill.LastPaymentID = &payment.ID
+			updatedBill.StatusReason = "payment confirmed"
+			updatedBill.UpdatedAt = now
+			if err := tx.Omit(clause.Associations).Save(&updatedBill).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Preload("Package").
+			Preload("Customer").
+			Preload("Customer.User").
+			First(&updatedSubscription, "id = ?", updatedBill.SubscriptionID).Error; err != nil {
+			return err
+		}
+
+		periodStart, periodEnd := subscriptionRangeFromBill(updatedBill, now)
+		updatedSubscription.StartDate = periodStart
+		updatedSubscription.EndDate = periodEnd
+		updatedSubscription.Status = "active"
+		if err := tx.Omit(clause.Associations).Save(&updatedSubscription).Error; err != nil {
+			return err
+		}
+
+		if s.renewalSvc != nil {
+			history := &models.SubscriptionRenewalHistory{
+				SubscriptionID: updatedSubscription.ID,
+				BillID:         &updatedBill.ID,
+				PaymentID:      &payment.ID,
+				Action:         "payment_confirmed",
+				Status:         "success",
+				Note:           fmt.Sprintf("Payment %s confirmed", payment.ID),
+				ExecutedAt:     now,
+			}
+			if err := tx.Create(history).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if s.billingProvisioningSvc != nil {
+		s.billingProvisioningSvc.HandlePaymentConfirmed(payment, &updatedBill, &updatedSubscription)
+	}
+
+	return &updatedBill, &updatedSubscription, nil
+}
+
 func (s *paymentService) RollbackBillAndSubs(bill models.Bill) (*models.Bill, *models.Subscription, error) {
 	// Rollback bill status to unpaid
 	bill.Status = "unpaid"
@@ -486,19 +598,58 @@ func (s *paymentService) HandleMindtransCallback(paymentID string, status string
 		if nerr != nil {
 			return nerr
 		}
-		nbill, nsubs, nerr := s.handleConfirmation(&payment, &bill)
+		nbill, nsubs, nerr := s.confirmPaymentInTransaction(&payment, &bill, true)
 		if nerr != nil {
 			return nerr
 		}
 		payment.Bill = *nbill
 		payment.Bill.Subscription = *nsubs
-	}
-
-	err = s.repo.Update(&payment)
-	if err != nil {
-		return err
+	} else {
+		err = s.repo.Update(&payment)
+		if err != nil {
+			return err
+		}
 	}
 	return err
+}
+
+func (s *paymentService) RecordPaymentCallbackLog(input PaymentCallbackLogInput) error {
+	if s.db == nil {
+		return nil
+	}
+
+	provider := strings.TrimSpace(input.Provider)
+	if provider == "" {
+		provider = "midtrans"
+	}
+
+	receivedAt := input.ReceivedAt
+	if receivedAt.IsZero() {
+		receivedAt = time.Now()
+	}
+
+	var paymentID *uuid.UUID
+	if orderID := strings.TrimSpace(input.OrderID); orderID != "" {
+		if parsedID, err := uuid.Parse(orderID); err == nil {
+			paymentID = &parsedID
+		}
+	}
+
+	callbackLog := models.PaymentCallbackLog{
+		PaymentID:         paymentID,
+		Provider:          provider,
+		OrderID:           strings.TrimSpace(input.OrderID),
+		TransactionStatus: strings.TrimSpace(input.TransactionStatus),
+		FraudStatus:       strings.TrimSpace(input.FraudStatus),
+		GrossAmount:       strings.TrimSpace(input.GrossAmount),
+		SignatureValid:    input.SignatureValid,
+		RawPayload:        input.RawPayload,
+		ReceivedAt:        receivedAt,
+		ProcessedAt:       input.ProcessedAt,
+		ErrorMessage:      strings.TrimSpace(input.ErrorMessage),
+	}
+
+	return s.db.Create(&callbackLog).Error
 }
 
 func validateCallbackAmount(grossAmount string, expectedAmount int) error {

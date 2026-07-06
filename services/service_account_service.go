@@ -22,6 +22,7 @@ type ServiceAccountService interface {
 	Update(id uuid.UUID, input *models.ServiceAccount) (*models.ServiceAccount, error)
 	Delete(id uuid.UUID) error
 	EnqueueAction(id uuid.UUID, action string) (*models.ProvisioningJob, error)
+	ProcessProvisioningJob(jobID uuid.UUID)
 }
 
 type serviceAccountService struct {
@@ -193,6 +194,10 @@ func (s *serviceAccountService) EnqueueAction(id uuid.UUID, action string) (*mod
 }
 
 func (s *serviceAccountService) processJob(jobID uuid.UUID) {
+	s.ProcessProvisioningJob(jobID)
+}
+
+func (s *serviceAccountService) ProcessProvisioningJob(jobID uuid.UUID) {
 	job, err := s.jobRepo.FindByID(jobID)
 	if err != nil || job == nil {
 		return
@@ -228,20 +233,17 @@ func (s *serviceAccountService) processJob(jobID uuid.UUID) {
 		_ = s.jobRepo.Update(job)
 		s.log(account.RouterID, &job.ID, "error", job.Action, err.Error(), job.Payload, "")
 
-		if job.AttemptCount < 3 && provisioningEnabled() {
-			retryAt := time.Now().Add(time.Duration(job.AttemptCount*5) * time.Second)
+		if job.AttemptCount < provisioningMaxAttempts() && provisioningEnabled() {
+			retryAt := time.Now().Add(provisioningRetryDelay(job.AttemptCount))
 			job.ScheduledAt = &retryAt
 			_ = s.jobRepo.Update(job)
-			go func(retryJobID uuid.UUID, delay time.Duration) {
-				time.Sleep(delay)
-				s.processJob(retryJobID)
-			}(job.ID, time.Duration(job.AttemptCount*5)*time.Second)
 		}
 		return
 	}
 
 	job.Status = "success"
 	job.ErrorMessage = ""
+	job.ScheduledAt = nil
 	_ = s.jobRepo.Update(job)
 }
 

@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"time"
+
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -13,6 +15,7 @@ type ProvisioningJobRepository interface {
 	FindByID(id uuid.UUID) (*models.ProvisioningJob, error)
 	Update(job *models.ProvisioningJob) error
 	FindByEntity(entityType string, entityID uuid.UUID, limit int) ([]models.ProvisioningJob, error)
+	FindEligibleForRetry(now time.Time, maxAttempts int, limit int) ([]models.ProvisioningJob, error)
 	CountByStatus(status string) (int64, error)
 }
 
@@ -55,6 +58,27 @@ func (r *provisioningJobRepository) FindByEntity(entityType string, entityID uui
 	err := r.db.
 		Where("entity_type = ? AND entity_id = ?", entityType, entityID).
 		Order("created_at desc").
+		Limit(limit).
+		Find(&jobs).Error
+	return jobs, err
+}
+
+func (r *provisioningJobRepository) FindEligibleForRetry(now time.Time, maxAttempts int, limit int) ([]models.ProvisioningJob, error) {
+	if maxAttempts <= 0 {
+		maxAttempts = 3
+	}
+	if limit <= 0 {
+		limit = 25
+	}
+	var jobs []models.ProvisioningJob
+	err := r.db.
+		Where("attempt_count < ?", maxAttempts).
+		Where(`
+			(LOWER(status) = 'pending' AND (scheduled_at IS NULL OR scheduled_at <= ?))
+			OR
+			(LOWER(status) = 'failed' AND scheduled_at IS NOT NULL AND scheduled_at <= ?)
+		`, now, now).
+		Order("scheduled_at asc, created_at asc").
 		Limit(limit).
 		Find(&jobs).Error
 	return jobs, err

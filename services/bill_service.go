@@ -69,6 +69,7 @@ type BillGenerationItem struct {
 type billService struct {
 	repo                   repositories.BillRepository
 	subRepo                repositories.SubscriptionRepository
+	automationRunRepo      repositories.BillingAutomationRunRepository
 	waSvc                  WhatsAppService
 	billingProvisioningSvc BillingProvisioningService
 }
@@ -76,14 +77,51 @@ type billService struct {
 func NewBillService(
 	repo repositories.BillRepository,
 	subRepo repositories.SubscriptionRepository,
+	automationRunRepo repositories.BillingAutomationRunRepository,
 	waSvc WhatsAppService,
 	billingProvisioningSvc BillingProvisioningService,
 ) BillService {
 	return &billService{
 		repo:                   repo,
 		subRepo:                subRepo,
+		automationRunRepo:      automationRunRepo,
 		waSvc:                  waSvc,
 		billingProvisioningSvc: billingProvisioningSvc,
+	}
+}
+
+func (s *billService) startAutomationRun(runType string, period string) *models.BillingAutomationRun {
+	if s.automationRunRepo == nil {
+		return nil
+	}
+	run := &models.BillingAutomationRun{
+		RunType:   strings.TrimSpace(runType),
+		Period:    strings.TrimSpace(period),
+		Status:    "running",
+		StartedAt: time.Now(),
+	}
+	if err := s.automationRunRepo.Create(run); err != nil {
+		log.Printf("[billing-automation] failed to create run log for %s: %v", runType, err)
+		return nil
+	}
+	return run
+}
+
+func (s *billService) finishAutomationRun(run *models.BillingAutomationRun, err error) {
+	if s.automationRunRepo == nil || run == nil {
+		return
+	}
+	now := time.Now()
+	run.FinishedAt = &now
+	if err != nil {
+		run.Status = "failed"
+		run.ErrorMessage = err.Error()
+	} else {
+		run.Status = "success"
+		run.ErrorMessage = ""
+	}
+	if updateErr := s.automationRunRepo.Update(run); updateErr != nil {
+		log.Printf("[billing-automation] failed to update run log %s: %v", run.ID, updateErr)
 	}
 }
 
@@ -275,16 +313,7 @@ func (s *billService) PreviewMonthlyBills(period string) (*BillGenerationResult,
 	return s.runMonthlyBillGeneration(period, true)
 }
 
-func (s *billService) runMonthlyBillGeneration(period string, dryRun bool) (*BillGenerationResult, error) {
-	status := "active"
-	// Luluskan false agar mengambil SEMUA active subscription, bukan hanya yang end_date-nya bulan ini.
-	// Hal ini untuk memastikan customer yang telat bayar bulan lalu tetap mendapat tagihan baru.
-	subs, err := s.subRepo.FindForBill(nil, &status, false)
-	log.Printf("Found %d active subscriptions", len(subs))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch subscriptions: %w", err)
-	}
-
+func (s *billService) runMonthlyBillGeneration(period string, dryRun bool) (result *BillGenerationResult, err error) {
 	// Pastikan kita menggunakan zona waktu Indonesia (WIB)
 	loc, err := time.LoadLocation("Asia/Jakarta")
 	if err == nil {
@@ -299,8 +328,31 @@ func (s *billService) runMonthlyBillGeneration(period string, dryRun bool) (*Bil
 		return nil, err
 	}
 	periodEnd := billMonthStart.AddDate(0, 1, 0).Add(-time.Second)
+	runType := "generate"
+	if dryRun {
+		runType = "generate_dry_run"
+	}
+	run := s.startAutomationRun(runType, fmt.Sprintf("%04d-%02d", currentYear, currentMonth))
+	defer func() {
+		if run != nil && result != nil {
+			run.TotalCandidates = result.TotalCandidates
+			run.TotalCreated = result.Created
+			run.TotalSkipped = result.SkippedExisting + result.SkippedOutOfPeriod + result.SkippedInvalid
+			run.TotalFailed = result.SkippedInvalid
+		}
+		s.finishAutomationRun(run, err)
+	}()
 
-	result := &BillGenerationResult{
+	status := "active"
+	// Luluskan false agar mengambil SEMUA active subscription, bukan hanya yang end_date-nya bulan ini.
+	// Hal ini untuk memastikan customer yang telat bayar bulan lalu tetap mendapat tagihan baru.
+	subs, fetchErr := s.subRepo.FindForBill(nil, &status, false)
+	log.Printf("Found %d active subscriptions", len(subs))
+	if fetchErr != nil {
+		return nil, fmt.Errorf("failed to fetch subscriptions: %w", fetchErr)
+	}
+
+	result = &BillGenerationResult{
 		Period:          fmt.Sprintf("%04d-%02d", currentYear, currentMonth),
 		PeriodYear:      currentYear,
 		PeriodMonth:     currentMonth,
@@ -438,15 +490,25 @@ func (s *billService) runMonthlyBillGeneration(period string, dryRun bool) (*Bil
 	return result, nil
 }
 
-func (s *billService) MarkOverdueBills(referenceTime time.Time, limit int) (int, error) {
+func (s *billService) MarkOverdueBills(referenceTime time.Time, limit int) (updated int, err error) {
 	if referenceTime.IsZero() {
 		referenceTime = time.Now()
 	}
+	run := s.startAutomationRun("mark_overdue", referenceTime.Format("2006-01-02"))
+	defer func() {
+		if run != nil {
+			run.TotalUpdated = updated
+		}
+		s.finishAutomationRun(run, err)
+	}()
+
 	bills, err := s.repo.FindUnpaidOverdueBills(referenceTime, limit)
 	if err != nil {
 		return 0, err
 	}
-	updated := 0
+	if run != nil {
+		run.TotalCandidates = len(bills)
+	}
 	for i := range bills {
 		bill := bills[i]
 		now := time.Now()
@@ -618,13 +680,23 @@ func (s *billService) GetUnpaidBills() ([]models.Bill, error) {
 	return s.repo.FindUnpaidBills()
 }
 
-func (s *billService) SendReminders() (map[string]interface{}, error) {
+func (s *billService) SendReminders() (result map[string]interface{}, err error) {
 	bills, err := s.repo.FindUnpaidBills()
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch unpaid bills: %w", err)
 	}
 
 	stats := newReminderStats(len(bills))
+	run := s.startAutomationRun("reminder", time.Now().Format("2006-01-02"))
+	defer func() {
+		if run != nil {
+			run.TotalCandidates = stats.total
+			run.TotalCreated = stats.sent
+			run.TotalSkipped = stats.skipped
+			run.TotalFailed = stats.failed
+		}
+		s.finishAutomationRun(run, err)
+	}()
 
 	baseTime := time.Now()
 	delayIndex := 1

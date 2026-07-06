@@ -23,6 +23,7 @@ type VoucherService interface {
 	GetVouchers(batchID string) ([]models.Voucher, error)
 	GetVoucherByID(id uuid.UUID) (*models.Voucher, error)
 	Redeem(code string, redeemerName string, redeemerPhone string) (*models.Voucher, *models.ProvisioningJob, error)
+	ProcessProvisioningJob(jobID uuid.UUID)
 }
 
 type voucherService struct {
@@ -182,6 +183,10 @@ func (s *voucherService) Redeem(code string, redeemerName string, redeemerPhone 
 }
 
 func (s *voucherService) processJob(jobID uuid.UUID) {
+	s.ProcessProvisioningJob(jobID)
+}
+
+func (s *voucherService) ProcessProvisioningJob(jobID uuid.UUID) {
 	job, err := s.jobRepo.FindByID(jobID)
 	if err != nil || job == nil {
 		return
@@ -211,20 +216,17 @@ func (s *voucherService) processJob(jobID uuid.UUID) {
 		job.ErrorMessage = err.Error()
 		_ = s.jobRepo.Update(job)
 		s.log(voucher.RouterID, &job.ID, "error", job.Action, err.Error(), job.Payload, "")
-		if job.AttemptCount < 3 && provisioningEnabled() {
-			retryAt := time.Now().Add(time.Duration(job.AttemptCount*5) * time.Second)
+		if job.AttemptCount < provisioningMaxAttempts() && provisioningEnabled() {
+			retryAt := time.Now().Add(provisioningRetryDelay(job.AttemptCount))
 			job.ScheduledAt = &retryAt
 			_ = s.jobRepo.Update(job)
-			go func(retryJobID uuid.UUID, delay time.Duration) {
-				time.Sleep(delay)
-				s.processJob(retryJobID)
-			}(job.ID, time.Duration(job.AttemptCount*5)*time.Second)
 		}
 		return
 	}
 
 	job.Status = "success"
 	job.ErrorMessage = ""
+	job.ScheduledAt = nil
 	_ = s.jobRepo.Update(job)
 }
 

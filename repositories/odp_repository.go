@@ -10,7 +10,7 @@ import (
 
 type OdpRepository interface {
 	Create(odp *models.Odp) error
-	FindAll() ([]models.Odp, error)
+	FindAll(coverageIDs []uuid.UUID) ([]models.Odp, error)
 	FindByID(id uuid.UUID) (*models.Odp, error)
 	Update(odp *models.Odp) error
 	Delete(id uuid.UUID) error
@@ -28,9 +28,13 @@ func (r *odpRepository) Create(odp *models.Odp) error {
 	return r.db.Create(odp).Error
 }
 
-func (r *odpRepository) FindAll() ([]models.Odp, error) {
+func (r *odpRepository) FindAll(coverageIDs []uuid.UUID) ([]models.Odp, error) {
 	var odps []models.Odp
-	err := r.db.Preload("Odc").Preload("Coverage").Find(&odps).Error
+	query := r.db.Preload("Odc").Preload("Coverage")
+	if len(coverageIDs) > 0 {
+		query = query.Where("coverage_id IN ?", coverageIDs)
+	}
+	err := query.Find(&odps).Error
 	return odps, err
 }
 
