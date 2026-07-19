@@ -15,7 +15,7 @@ import (
 
 type CustomerService interface {
 	Create(customer *dto.CreateCustomerDTO) (*models.Customer, error)
-	GetAll(page, limit int, search string, adminID string, coverageIDs []string) ([]models.Customer, int64, error)
+	GetAll(page, limit int, search string, adminID string, coverageIDs []string, subscriptionStatus string) ([]models.Customer, int64, error)
 	GetByID(id uuid.UUID) (*models.Customer, error)
 	FindByUserID(userID uuid.UUID) (*models.Customer, error)
 	Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*models.Customer, error)
@@ -155,8 +155,12 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 	return customer, nil
 }
 
-func (s *customerService) GetAll(page, limit int, search string, adminID string, coverageIDs []string) ([]models.Customer, int64, error) {
+func (s *customerService) GetAll(page, limit int, search string, adminID string, coverageIDs []string, subscriptionStatus string) ([]models.Customer, int64, error) {
 	adminID = strings.TrimSpace(adminID)
+	subscriptionStatus = strings.ToLower(strings.TrimSpace(subscriptionStatus))
+	if subscriptionStatus != "" && subscriptionStatus != "missing" && subscriptionStatus != "configured" {
+		return nil, 0, errors.New("invalid subscription_status")
+	}
 
 	var parsedAdminID *uuid.UUID
 	if adminID != "" {
@@ -178,7 +182,7 @@ func (s *customerService) GetAll(page, limit int, search string, adminID string,
 		}
 	}
 
-	return s.repo.FindAll(page, limit, search, parsedAdminID, parsedCoverageIDs)
+	return s.repo.FindAll(page, limit, search, parsedAdminID, parsedCoverageIDs, subscriptionStatus)
 }
 
 func (s *customerService) GetByID(id uuid.UUID) (*models.Customer, error) {

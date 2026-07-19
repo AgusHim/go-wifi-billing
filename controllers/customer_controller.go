@@ -55,6 +55,7 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 	limitStr := ctx.Query("limit", "10")
 	search := ctx.Query("search", "")
 	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
+	subscriptionStatus := strings.TrimSpace(ctx.Query("subscription_status", ""))
 
 	// Parse coverage_ids manually
 	var coverageIDs []string
@@ -95,10 +96,10 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 		}
 	}
 
-	customers, total, err := c.service.GetAll(page, limit, search, adminID, coverageIDs)
+	customers, total, err := c.service.GetAll(page, limit, search, adminID, coverageIDs, subscriptionStatus)
 	if err != nil {
 		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "invalid admin_id") || strings.Contains(msg, "invalid coverage_id") {
+		if strings.Contains(msg, "invalid admin_id") || strings.Contains(msg, "invalid coverage_id") || strings.Contains(msg, "invalid subscription_status") {
 			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 		}
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
@@ -110,6 +111,7 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 				"page":        page,
 				"limit":       limit,
 				"total":       total,
+				"total_items": total,
 				"total_pages": int((total + int64(limit) - 1) / int64(limit)),
 			},
 		},
@@ -219,7 +221,7 @@ func (c *CustomerController) ExportCSV(ctx *fiber.Ctx) error {
 		}
 	}
 
-	customers, _, err := c.service.GetAll(1, 100000, search, adminID, coverageIDs)
+	customers, _, err := c.service.GetAll(1, 100000, search, adminID, coverageIDs, "")
 	if err != nil {
 		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
