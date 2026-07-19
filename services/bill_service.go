@@ -19,6 +19,7 @@ import (
 
 type BillService interface {
 	GetAll(page, limit int, search string, adminID string, status string, startAt string, endAt string, coverageIDs []string) ([]models.Bill, int64, error)
+	GetMissingCurrentMonthBills(page, limit int, search, adminID string, coverageIDs []string) (*MissingCurrentMonthBillsResult, int64, error)
 	GetByID(id string) (models.Bill, error)
 	Create(input models.Bill) (models.Bill, error)
 	Update(id string, input models.Bill) (models.Bill, error)
@@ -64,6 +65,20 @@ type BillGenerationItem struct {
 	Amount         int       `json:"amount"`
 	ExistingBillID string    `json:"existing_bill_id,omitempty"`
 	PublicID       string    `json:"public_id,omitempty"`
+}
+
+type MissingCurrentMonthBillsResult struct {
+	Period      string                   `json:"period"`
+	PeriodStart time.Time                `json:"period_start"`
+	PeriodEnd   time.Time                `json:"period_end"`
+	Items       []MissingCurrentBillItem `json:"items"`
+}
+
+type MissingCurrentBillItem struct {
+	Subscription          models.Subscription `json:"subscription"`
+	ReasonCode            string              `json:"reason_code"`
+	Reason                string              `json:"reason"`
+	EligibleForGeneration bool                `json:"eligible_for_generation"`
 }
 
 type billService struct {
@@ -166,6 +181,81 @@ func (s *billService) GetAll(page, limit int, search string, adminID string, sta
 	}
 
 	return s.repo.FindAllPaginated(page, limit, search, parsedAdminID, status, startDate, endDate, parsedCoverageIDs)
+}
+
+func (s *billService) GetMissingCurrentMonthBills(page, limit int, search, adminID string, coverageIDs []string) (*MissingCurrentMonthBillsResult, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	var parsedAdminID *uuid.UUID
+	if adminID = strings.TrimSpace(adminID); adminID != "" {
+		id, err := uuid.Parse(adminID)
+		if err != nil {
+			return nil, 0, errors.New("invalid admin_id")
+		}
+		parsedAdminID = &id
+	}
+
+	parsedCoverageIDs := make([]uuid.UUID, 0, len(coverageIDs))
+	for _, coverageID := range coverageIDs {
+		coverageID = strings.TrimSpace(coverageID)
+		if coverageID == "" {
+			continue
+		}
+		id, err := uuid.Parse(coverageID)
+		if err != nil {
+			return nil, 0, errors.New("invalid coverage_id")
+		}
+		parsedCoverageIDs = append(parsedCoverageIDs, id)
+	}
+
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.FixedZone("WIB", 7*60*60)
+	}
+	now := time.Now().In(loc)
+	periodStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+	periodEnd := periodStart.AddDate(0, 1, 0)
+
+	subscriptions, total, err := s.subRepo.FindWithoutBillForPeriod(
+		page,
+		limit,
+		strings.TrimSpace(search),
+		parsedAdminID,
+		parsedCoverageIDs,
+		now.Year(),
+		int(now.Month()),
+		periodStart,
+		periodEnd,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch subscriptions without current month bill: %w", err)
+	}
+
+	result := &MissingCurrentMonthBillsResult{
+		Period:      periodStart.Format("2006-01"),
+		PeriodStart: periodStart,
+		PeriodEnd:   periodEnd.Add(-time.Second),
+		Items:       make([]MissingCurrentBillItem, 0, len(subscriptions)),
+	}
+	for _, subscription := range subscriptions {
+		code, reason, eligible := diagnoseMissingCurrentMonthBill(subscription, periodStart, loc)
+		result.Items = append(result.Items, MissingCurrentBillItem{
+			Subscription:          subscription,
+			ReasonCode:            code,
+			Reason:                reason,
+			EligibleForGeneration: eligible,
+		})
+	}
+
+	return result, total, nil
 }
 
 func (s *billService) GetByID(id string) (models.Bill, error) {
@@ -644,6 +734,33 @@ func shouldGenerateBillForMonth(sub models.Subscription, billMonthStart time.Tim
 	}
 
 	return true
+}
+
+func diagnoseMissingCurrentMonthBill(sub models.Subscription, billMonthStart time.Time, loc *time.Location) (string, string, bool) {
+	status := strings.ToLower(strings.TrimSpace(sub.Status))
+	if status != "active" {
+		switch status {
+		case "suspended":
+			return "subscription_suspended", "Subscription ditangguhkan; generator tagihan hanya memproses subscription aktif.", false
+		case "terminated":
+			return "subscription_terminated", "Subscription sudah dihentikan; generator tagihan hanya memproses subscription aktif.", false
+		default:
+			return "subscription_inactive", "Status subscription tidak aktif sehingga tidak diproses oleh generator tagihan.", false
+		}
+	}
+
+	billMonthStart = monthStartInLocation(billMonthStart, loc)
+	if !sub.StartDate.IsZero() && billMonthStart.Before(monthStartInLocation(sub.StartDate, loc)) {
+		return "subscription_not_started", "Periode subscription belum dimulai pada bulan ini.", false
+	}
+	if !sub.EndDate.IsZero() && monthStartInLocation(sub.EndDate, loc).Before(billMonthStart) {
+		return "subscription_ended", "Periode subscription sudah berakhir sebelum bulan ini.", false
+	}
+	if sub.Package == nil {
+		return "package_missing", "Paket subscription tidak tersedia sehingga nominal tagihan tidak dapat dihitung.", false
+	}
+
+	return "eligible_not_generated", "Subscription memenuhi syarat, tetapi tagihan bulan ini belum dibuat oleh generator.", true
 }
 
 func monthStartInLocation(date time.Time, loc *time.Location) time.Time {

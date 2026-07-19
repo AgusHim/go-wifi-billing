@@ -30,6 +30,7 @@ func (c *BillController) RegisterRoutes(router fiber.Router) {
 	admin_api.Get("/dashboard/stats", middlewares.UserProtected(), billingOps, c.GetDashboardStats)
 	admin_api.Get("/dashboard/charts", middlewares.UserProtected(), billingOps, c.GetDashboardCharts)
 	admin_api.Get("/recent/paid", middlewares.UserProtected(), billingOps, c.GetRecentPaidBills)
+	admin_api.Get("/missing/current-month", middlewares.UserProtected(), billingOps, c.GetMissingCurrentMonthBills)
 	admin_api.Get("/generate", middlewares.UserProtected(), billingOps, c.GenerateMonthlyBills)
 	admin_api.Post("/generate", middlewares.UserProtected(), billingOps, c.GenerateMonthlyBills)
 	admin_api.Post("/generate/dry-run", middlewares.UserProtected(), billingOps, c.PreviewMonthlyBills)
@@ -123,6 +124,69 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 		},
 		"data":    data,
 		"message": "Success get all bills",
+	})
+}
+
+func (c *BillController) GetMissingCurrentMonthBills(ctx *fiber.Ctx) error {
+	page, _ := strconv.Atoi(ctx.Query("page", "1"))
+	limit, _ := strconv.Atoi(ctx.Query("limit", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	search := strings.TrimSpace(ctx.Query("search", ""))
+	adminID := strings.TrimSpace(ctx.Query("admin_id", ""))
+	coverageIDs := make([]string, 0)
+	ctx.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		name := string(key)
+		id := strings.TrimSpace(string(value))
+		if (name == "coverage_ids" || name == "coverage_ids[]") && id != "" {
+			coverageIDs = append(coverageIDs, id)
+		}
+	})
+	if len(coverageIDs) == 0 {
+		if coverageID := strings.TrimSpace(ctx.Query("coverage_id", "")); coverageID != "" {
+			coverageIDs = []string{coverageID}
+		}
+	}
+
+	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
+		role, _ := userClaims["role"].(string)
+		userID, _ := userClaims["user_id"].(string)
+		role = strings.ToLower(strings.TrimSpace(role))
+		if role != "admin" && role != "root" && strings.TrimSpace(userID) != "" {
+			adminID = userID
+		}
+	}
+
+	result, total, err := c.service.GetMissingCurrentMonthBills(page, limit, search, adminID, coverageIDs)
+	if err != nil {
+		message := strings.ToLower(err.Error())
+		if strings.Contains(message, "invalid admin_id") || strings.Contains(message, "invalid coverage_id") {
+			return ctx.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+		}
+		return ctx.Status(500).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+
+	return ctx.JSON(fiber.Map{
+		"success": true,
+		"data":    result,
+		"meta": fiber.Map{
+			"pagination": fiber.Map{
+				"page":        page,
+				"limit":       limit,
+				"total":       total,
+				"total_items": total,
+				"total_pages": int((total + int64(limit) - 1) / int64(limit)),
+			},
+		},
+		"message": "Success get subscriptions without current month bill",
 	})
 }
 

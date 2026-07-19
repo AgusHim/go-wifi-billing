@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Agushim/go_wifi_billing/models"
@@ -13,6 +14,7 @@ type SubscriptionRepository interface {
 	Create(subscription *models.Subscription) error
 	FindAll(page, limit int, search string, customerID *string, status *string, customerDeleted *string, endDateFilter *string, coverageIDs []uuid.UUID) ([]models.Subscription, int64, error)
 	FindForBill(customerID *string, status *string, isEndThisMonth bool) ([]models.Subscription, error)
+	FindWithoutBillForPeriod(page, limit int, search string, adminID *uuid.UUID, coverageIDs []uuid.UUID, year, month int, periodStart, periodEnd time.Time) ([]models.Subscription, int64, error)
 	FindAutoRenewCandidates(threshold time.Time, renewalMode string) ([]models.Subscription, error)
 	FindByID(id uuid.UUID) (*models.Subscription, error)
 	FindByCustomerID(customerID uuid.UUID) (*models.Subscription, error)
@@ -156,6 +158,77 @@ func (r *subscriptionRepository) FindForBill(customerID *string, status *string,
 		Preload("RenewalHistories.Payment").
 		Find(&subscriptions).Error
 	return subscriptions, err
+}
+
+func (r *subscriptionRepository) FindWithoutBillForPeriod(
+	page, limit int,
+	search string,
+	adminID *uuid.UUID,
+	coverageIDs []uuid.UUID,
+	year, month int,
+	periodStart, periodEnd time.Time,
+) ([]models.Subscription, int64, error) {
+	var (
+		subscriptions []models.Subscription
+		total         int64
+	)
+
+	query := r.db.Model(&models.Subscription{}).
+		Preload("Customer").
+		Preload("Customer.User").
+		Preload("Customer.Coverage").
+		Preload("Package").
+		Preload("NetworkPlan").
+		Where(`NOT EXISTS (
+			SELECT 1 FROM bills
+			WHERE bills.subscription_id = subscriptions.id
+				AND bills.deleted_at IS NULL
+				AND (
+					(bills.period_year = ? AND bills.period_month = ?)
+					OR (
+						bills.period_year IS NULL
+						AND bills.period_month IS NULL
+						AND bills.bill_date >= ?
+						AND bills.bill_date < ?
+					)
+				)
+		)`, year, month, periodStart, periodEnd)
+
+	if adminID != nil || len(coverageIDs) > 0 || strings.TrimSpace(search) != "" {
+		query = query.Joins("JOIN customers AS missing_bill_customers ON missing_bill_customers.id = subscriptions.customer_id").
+			Where("missing_bill_customers.deleted_at IS NULL")
+	}
+	if adminID != nil {
+		query = query.Where("missing_bill_customers.admin_id = ?", *adminID)
+	}
+	if len(coverageIDs) > 0 {
+		query = query.Where("missing_bill_customers.coverage_id IN ?", coverageIDs)
+	}
+	if search = strings.TrimSpace(search); search != "" {
+		pattern := "%" + search + "%"
+		query = query.Joins("JOIN users AS missing_bill_users ON missing_bill_users.id = missing_bill_customers.user_id").
+			Where(
+				"LOWER(missing_bill_users.name) LIKE LOWER(?) OR LOWER(missing_bill_users.email) LIKE LOWER(?) OR LOWER(missing_bill_customers.service_number) LIKE LOWER(?)",
+				pattern,
+				pattern,
+				pattern,
+			)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * limit
+	if err := query.
+		Order("subscriptions.created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&subscriptions).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return subscriptions, total, nil
 }
 
 func (r *subscriptionRepository) FindAutoRenewCandidates(threshold time.Time, renewalMode string) ([]models.Subscription, error) {
