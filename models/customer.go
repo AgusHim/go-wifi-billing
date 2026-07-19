@@ -26,13 +26,14 @@ type Customer struct {
 	Mode          string     `json:"mode"`
 	// Legacy PPPoE metadata kept for backward compatibility during MikroTik transition.
 	// New provisioning flow should prefer ServiceAccount + NetworkPlan.
-	IDPPOE      string         `json:"id_ppoe"`
-	ProfilePPOE string         `json:"profile_ppoe"`
-	AdminID              *uuid.UUID     `json:"admin_id" gorm:"type:uuid"`
-	InstallationSchedule *time.Time     `json:"installation_schedule"`
-	CreatedAt            time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at"`
+	IDPPOE                string         `json:"id_ppoe"`
+	ProfilePPOE           string         `json:"profile_ppoe"`
+	AdminID               *uuid.UUID     `json:"admin_id" gorm:"type:uuid"`
+	InstallationSchedule  *time.Time     `json:"installation_schedule"`
+	CreatedAt             time.Time      `json:"created_at"`
+	UpdatedAt             time.Time      `json:"updated_at"`
+	DeletedAt             gorm.DeletedAt `gorm:"index" json:"deleted_at"`
+	SubscriptionGapReason string         `json:"subscription_gap_reason,omitempty" gorm:"-"`
 
 	// Relationships (optional preload)
 	User          *User          `json:"user" gorm:"foreignKey:UserID"`

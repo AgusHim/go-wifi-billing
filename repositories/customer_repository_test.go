@@ -42,28 +42,38 @@ func TestFindAllFiltersCustomersBySubscriptionStatus(t *testing.T) {
 	withoutSubscription := createCustomerSubscriptionFilterTestCustomer(t, db, coverage.ID, 1)
 	configured := createCustomerSubscriptionFilterTestCustomer(t, db, coverage.ID, 2)
 	softDeletedSubscription := createCustomerSubscriptionFilterTestCustomer(t, db, coverage.ID, 3)
+	suspendedSubscription := createCustomerSubscriptionFilterTestCustomer(t, db, coverage.ID, 4)
+	terminatedSubscription := createCustomerSubscriptionFilterTestCustomer(t, db, coverage.ID, 5)
 
-	createCustomerSubscriptionFilterTestSubscription(t, db, configured.ID, packageData.ID, false)
-	createCustomerSubscriptionFilterTestSubscription(t, db, softDeletedSubscription.ID, packageData.ID, true)
+	createCustomerSubscriptionFilterTestSubscription(t, db, configured.ID, packageData.ID, "active", false)
+	createCustomerSubscriptionFilterTestSubscription(t, db, softDeletedSubscription.ID, packageData.ID, "active", true)
+	createCustomerSubscriptionFilterTestSubscription(t, db, suspendedSubscription.ID, packageData.ID, "suspended", false)
+	createCustomerSubscriptionFilterTestSubscription(t, db, terminatedSubscription.ID, packageData.ID, "terminated", false)
 
 	repository := NewCustomerRepository(db)
 	missing, missingTotal, err := repository.FindAll(1, 20, "", nil, nil, "missing")
 	if err != nil {
 		t.Fatalf("find customers missing subscription: %v", err)
 	}
-	if missingTotal != 2 {
-		t.Fatalf("missing total = %d, want 2", missingTotal)
+	if missingTotal != 4 {
+		t.Fatalf("missing total = %d, want 4", missingTotal)
 	}
 	assertCustomerFilterResult(t, missing, withoutSubscription.ID, true)
 	assertCustomerFilterResult(t, missing, softDeletedSubscription.ID, true)
+	assertCustomerFilterResult(t, missing, suspendedSubscription.ID, true)
+	assertCustomerFilterResult(t, missing, terminatedSubscription.ID, true)
 	assertCustomerFilterResult(t, missing, configured.ID, false)
+	assertCustomerGapReason(t, missing, withoutSubscription.ID, "Belum pernah disetting subscription")
+	assertCustomerGapReason(t, missing, softDeletedSubscription.ID, "Subscription sebelumnya sudah dihapus")
+	assertCustomerGapReason(t, missing, suspendedSubscription.ID, "Subscription terakhir berstatus suspended")
+	assertCustomerGapReason(t, missing, terminatedSubscription.ID, "Subscription terakhir berstatus terminated")
 
 	configuredCustomers, configuredTotal, err := repository.FindAll(1, 20, "", nil, nil, "configured")
 	if err != nil {
 		t.Fatalf("find configured customers: %v", err)
 	}
-	if configuredTotal != 1 {
-		t.Fatalf("configured total = %d, want 1", configuredTotal)
+	if configuredTotal != 3 {
+		t.Fatalf("configured total = %d, want 3", configuredTotal)
 	}
 	assertCustomerFilterResult(t, configuredCustomers, configured.ID, true)
 }
@@ -91,12 +101,12 @@ func createCustomerSubscriptionFilterTestCustomer(t *testing.T, db *gorm.DB, cov
 	return customer
 }
 
-func createCustomerSubscriptionFilterTestSubscription(t *testing.T, db *gorm.DB, customerID, packageID uuid.UUID, softDelete bool) {
+func createCustomerSubscriptionFilterTestSubscription(t *testing.T, db *gorm.DB, customerID, packageID uuid.UUID, status string, softDelete bool) {
 	t.Helper()
 	subscription := models.Subscription{
 		CustomerID: customerID,
 		PackageID:  packageID,
-		Status:     "active",
+		Status:     status,
 	}
 	if err := db.Create(&subscription).Error; err != nil {
 		t.Fatalf("create subscription: %v", err)
@@ -106,6 +116,19 @@ func createCustomerSubscriptionFilterTestSubscription(t *testing.T, db *gorm.DB,
 			t.Fatalf("soft delete subscription: %v", err)
 		}
 	}
+}
+
+func assertCustomerGapReason(t *testing.T, customers []models.Customer, id uuid.UUID, want string) {
+	t.Helper()
+	for _, customer := range customers {
+		if customer.ID == id {
+			if customer.SubscriptionGapReason != want {
+				t.Fatalf("customer %s gap reason = %q, want %q", id, customer.SubscriptionGapReason, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("customer %s not found", id)
 }
 
 func assertCustomerFilterResult(t *testing.T, customers []models.Customer, id uuid.UUID, want bool) {

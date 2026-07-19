@@ -38,6 +38,15 @@ func (r *customerRepository) Create(customer *models.Customer) error {
 func (r *customerRepository) FindAll(page, limit int, search string, adminID *uuid.UUID, coverageIDs []uuid.UUID, subscriptionStatus string) ([]models.Customer, int64, error) {
 	var customers []models.Customer
 	var total int64
+	normalizedSubscriptionStatus := strings.ToLower(strings.TrimSpace(subscriptionStatus))
+
+	subscriptionPreload := func(tx *gorm.DB) *gorm.DB {
+		tx = tx.Order("subscriptions.created_at DESC")
+		if normalizedSubscriptionStatus == "missing" {
+			return tx.Unscoped()
+		}
+		return tx
+	}
 
 	query := r.db.Model(&models.Customer{}).
 		Preload("User", func(tx *gorm.DB) *gorm.DB { return tx.Unscoped() }).
@@ -45,9 +54,7 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 		Preload("Coverage").
 		Preload("Odc").
 		Preload("Odp").
-		Preload("Subscriptions", func(tx *gorm.DB) *gorm.DB {
-			return tx.Order("subscriptions.created_at DESC")
-		}).
+		Preload("Subscriptions", subscriptionPreload).
 		Preload("Subscriptions.Package").
 		Preload("Subscriptions.NetworkPlan").
 		Preload("Subscriptions.NetworkPlan.Router").
@@ -67,13 +74,14 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 	if len(coverageIDs) > 0 {
 		query = query.Where("customers.coverage_id IN ?", coverageIDs)
 	}
-	switch strings.ToLower(strings.TrimSpace(subscriptionStatus)) {
+	switch normalizedSubscriptionStatus {
 	case "missing":
 		query = query.Where(`NOT EXISTS (
 			SELECT 1
 			FROM subscriptions
 			WHERE subscriptions.customer_id = customers.id
 				AND subscriptions.deleted_at IS NULL
+				AND LOWER(subscriptions.status) = 'active'
 		)`)
 	case "configured":
 		query = query.Where(`EXISTS (
@@ -99,7 +107,44 @@ func (r *customerRepository) FindAll(page, limit int, search string, adminID *uu
 		return nil, 0, err
 	}
 
+	if normalizedSubscriptionStatus == "missing" {
+		setSubscriptionGapReasons(customers)
+	}
+
 	return customers, total, nil
+}
+
+func setSubscriptionGapReasons(customers []models.Customer) {
+	for customerIndex := range customers {
+		customer := &customers[customerIndex]
+		var latestExisting *models.Subscription
+		hasDeletedSubscription := false
+
+		for subscriptionIndex := range customer.Subscriptions {
+			subscription := &customer.Subscriptions[subscriptionIndex]
+			if subscription.DeletedAt.Valid {
+				hasDeletedSubscription = true
+				continue
+			}
+			if latestExisting == nil {
+				latestExisting = subscription
+			}
+		}
+
+		switch {
+		case latestExisting != nil && strings.TrimSpace(latestExisting.Status) != "":
+			customer.SubscriptionGapReason = fmt.Sprintf(
+				"Subscription terakhir berstatus %s",
+				strings.ToLower(strings.TrimSpace(latestExisting.Status)),
+			)
+		case latestExisting != nil:
+			customer.SubscriptionGapReason = "Subscription tersedia tetapi status belum diset"
+		case hasDeletedSubscription:
+			customer.SubscriptionGapReason = "Subscription sebelumnya sudah dihapus"
+		default:
+			customer.SubscriptionGapReason = "Belum pernah disetting subscription"
+		}
+	}
 }
 
 func (r *customerRepository) FindByID(id uuid.UUID) (*models.Customer, error) {
