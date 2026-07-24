@@ -39,7 +39,7 @@ func CanonicalRoleKey(role string) (string, bool) {
 // available temporarily as a legacy compatibility field during RBAC rollout.
 type Role struct {
 	ID          uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey"`
-	Key         string     `json:"key" gorm:"type:varchar(50);not null;uniqueIndex"`
+	Key         string     `json:"key" gorm:"type:varchar(50);not null;unique"`
 	Name        string     `json:"name" gorm:"type:varchar(100);not null"`
 	Description string     `json:"description" gorm:"type:text"`
 	IsSystem    bool       `json:"is_system" gorm:"not null;default:false;check:chk_roles_owner_is_system,NOT is_owner OR is_system"`
@@ -60,7 +60,7 @@ func (r *Role) BeforeCreate(tx *gorm.DB) error {
 
 type Permission struct {
 	ID          uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
-	Key         string    `json:"key" gorm:"type:varchar(100);not null;uniqueIndex"`
+	Key         string    `json:"key" gorm:"type:varchar(100);not null;unique"`
 	Module      string    `json:"module" gorm:"type:varchar(50);not null;index:idx_permissions_module_sort,priority:1"`
 	Action      string    `json:"action" gorm:"type:varchar(50);not null"`
 	Name        string    `json:"name" gorm:"type:varchar(150);not null"`

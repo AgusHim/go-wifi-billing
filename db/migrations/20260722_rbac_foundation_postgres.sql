@@ -15,7 +15,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS roles (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  key varchar(50) NOT NULL UNIQUE,
+  key varchar(50) NOT NULL CONSTRAINT uni_roles_key UNIQUE,
   name varchar(100) NOT NULL,
   description text NOT NULL DEFAULT '',
   is_system boolean NOT NULL DEFAULT false,
@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_roles_is_active ON roles (is_active);
 
 CREATE TABLE IF NOT EXISTS permissions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  key varchar(100) NOT NULL UNIQUE,
+  key varchar(100) NOT NULL CONSTRAINT uni_permissions_key UNIQUE,
   module varchar(50) NOT NULL,
   action varchar(50) NOT NULL,
   name varchar(150) NOT NULL,

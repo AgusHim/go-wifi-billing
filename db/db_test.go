@@ -39,3 +39,32 @@ func TestAutoMigrateIncludesAccessControlFoundation(t *testing.T) {
 		}
 	}
 }
+
+func TestAccessControlNaturalKeysUseUniqueConstraints(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+
+	modelsToCheck := []any{
+		&models.Role{},
+		&models.Permission{},
+	}
+	for _, model := range modelsToCheck {
+		statement := &gorm.Statement{DB: database}
+		if err := statement.Parse(model); err != nil {
+			t.Fatalf("parse %T: %v", model, err)
+		}
+
+		field := statement.Schema.LookUpField("Key")
+		if field == nil {
+			t.Fatalf("%T missing Key field", model)
+		}
+		if !field.Unique {
+			t.Errorf("%T Key must use a unique constraint to match the PostgreSQL migration", model)
+		}
+		if field.UniqueIndex != "" {
+			t.Errorf("%T Key unexpectedly uses unique index %q", model, field.UniqueIndex)
+		}
+	}
+}
