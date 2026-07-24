@@ -25,15 +25,35 @@ func NewCustomerController(service services.CustomerService) *CustomerController
 }
 
 func (c *CustomerController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/customers")
-	r.Get("/export", middlewares.UserProtected(), c.ExportCSV)
-	r.Post("/import", middlewares.UserProtected(), c.ImportCSV)
-	r.Get("/", middlewares.UserProtected(), c.GetAll)
+	userRoutes := router.Group("/user_api/customers", middlewares.UserProtected())
+	userRoutes.Get("/me", c.GetMyCustomer)
+
+	r := router.Group("/admin_api/customers", middlewares.UserProtected())
+	r.Get("/export", c.ExportCSV)
+	r.Post("/import", c.ImportCSV)
+	r.Get("/", c.GetAll)
 	r.Get("/by_user/:user_id", c.GetByUserID)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)
 	r.Put("/:id", c.Update)
 	r.Delete("/:id", c.Delete)
+}
+
+func (c *CustomerController) GetMyCustomer(ctx *fiber.Ctx) error {
+	claims, ok := ctx.Locals("user").(jwt.MapClaims)
+	if !ok {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	userID, _ := claims["user_id"].(string)
+	id, err := uuid.Parse(strings.TrimSpace(userID))
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	customer, err := c.service.FindByUserID(id)
+	if err != nil {
+		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "Customer not found"})
+	}
+	return ctx.JSON(fiber.Map{"success": true, "data": customer, "message": "Success get data"})
 }
 
 func (c *CustomerController) Create(ctx *fiber.Ctx) error {
@@ -79,22 +99,7 @@ func (c *CustomerController) GetAll(ctx *fiber.Ctx) error {
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
 
-	// Check if user is root, if yes, get all data without pagination
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "root" {
-			limit = 999999
-			page = 1
-		}
-	}
-
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		userID, _ := userClaims["user_id"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "loket" && strings.TrimSpace(userID) != "" {
-			adminID = userID
-		}
-	}
+	adminID = scopedAdminID(ctx, adminID)
 
 	customers, total, err := c.service.GetAll(page, limit, search, adminID, coverageIDs, subscriptionStatus)
 	if err != nil {
@@ -213,13 +218,7 @@ func (c *CustomerController) ExportCSV(ctx *fiber.Ctx) error {
 		}
 	}
 
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		userID, _ := userClaims["user_id"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "loket" && strings.TrimSpace(userID) != "" {
-			adminID = userID
-		}
-	}
+	adminID = scopedAdminID(ctx, adminID)
 
 	customers, _, err := c.service.GetAll(1, 100000, search, adminID, coverageIDs, "")
 	if err != nil {

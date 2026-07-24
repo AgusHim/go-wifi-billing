@@ -3,6 +3,7 @@ package controllers
 import (
 	"strings"
 
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -18,7 +19,7 @@ func NewInventoryController(service services.InventoryService) *InventoryControl
 }
 
 func (c *InventoryController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/inventory")
+	r := router.Group("/admin_api/inventory", middlewares.UserProtected())
 	r.Get("/items", c.GetItems)
 	r.Post("/items", c.CreateItem)
 	r.Get("/items/:id", c.GetItemByID)

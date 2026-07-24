@@ -1,23 +1,29 @@
 package controllers
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/Agushim/go_wifi_billing/dto"
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
-	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type UserController struct {
-	service services.UserService
+	service              services.UserService
+	authorizationService services.AuthorizationService
 }
 
-func NewUserController(s services.UserService) *UserController {
-	return &UserController{service: s}
+func NewUserController(s services.UserService, authorizationService ...services.AuthorizationService) *UserController {
+	controller := &UserController{service: s}
+	if len(authorizationService) > 0 {
+		controller.authorizationService = authorizationService[0]
+	}
+	return controller
 }
 
 func (ctrl *UserController) RegisterRoutes(router fiber.Router) {
@@ -28,7 +34,8 @@ func (ctrl *UserController) RegisterRoutes(router fiber.Router) {
 	api.Get("/auth/me", middlewares.UserProtected(), ctrl.GetMe)
 	api.Put("/auth/me", middlewares.UserProtected(), ctrl.UpdateMe)
 
-	users := api.Group("/users")
+	users := api.Group("/users", middlewares.UserProtected())
+	users.Post("/", ctrl.Create)
 	users.Get("/", ctrl.GetAll)
 	users.Get("/:id", ctrl.GetByID)
 	users.Put("/:id", ctrl.Update)
@@ -47,6 +54,19 @@ func (ctrl *UserController) Register(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"success": true, "data": user, "message": "User registered"})
+}
+
+func (ctrl *UserController) Create(c *fiber.Ctx) error {
+	var input dto.CreateUserDTO
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "invalid input"})
+	}
+
+	user, err := ctrl.service.Create(input)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"success": true, "data": user, "message": "User created"})
 }
 
 func (ctrl *UserController) Login(c *fiber.Ctx) error {
@@ -72,19 +92,43 @@ func (ctrl *UserController) GetMe(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"success": false, "message": "User not found"})
 	}
 
-	return c.JSON(fiber.Map{"success": true, "data": user, "message": "Success get data"})
+	if ctrl.authorizationService == nil {
+		return c.JSON(fiber.Map{"success": true, "data": user, "message": "Success get data"})
+	}
+	parsedUserID, err := uuid.Parse(userID)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	decision, err := ctrl.authorizationService.Resolve(c.UserContext(), parsedUserID)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "forbidden"})
+	}
+	permissions := make([]string, 0, len(decision.Permissions))
+	for permission := range decision.Permissions {
+		permissions = append(permissions, permission)
+	}
+	sort.Strings(permissions)
+	roleName := decision.RoleKey
+	if user.RoleDefinition != nil && user.RoleDefinition.Name != "" {
+		roleName = user.RoleDefinition.Name
+	}
+	return c.JSON(fiber.Map{"success": true, "data": fiber.Map{
+		"id": user.ID, "name": user.Name, "email": user.Email, "phone": user.Phone,
+		"role":        fiber.Map{"id": decision.RoleID, "key": decision.RoleKey, "name": roleName, "is_owner": decision.IsOwner},
+		"legacy_role": user.Role, "permissions": permissions, "permission_version": decision.PermissionVersion,
+	}, "message": "Success get current authorization profile"})
 }
 
 func (ctrl *UserController) UpdateMe(c *fiber.Ctx) error {
 	userClaims := c.Locals("user").(jwt.MapClaims)
 	userID := userClaims["user_id"].(string)
 
-	var input models.User
+	var input dto.UpdateProfileDTO
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": "invalid input"})
 	}
 
-	user, err := ctrl.service.Update(userID, &input)
+	user, err := ctrl.service.UpdateProfile(userID, input)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}
@@ -100,15 +144,6 @@ func (ctrl *UserController) GetAll(c *fiber.Ctx) error {
 
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
-
-	// Check if user is root, if yes, get all data without pagination
-	if userClaims, ok := c.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "root" {
-			limit = 999999
-			page = 1
-		}
-	}
 
 	var roles []string
 	if roleParam != "" {
@@ -149,12 +184,12 @@ func (ctrl *UserController) GetByID(c *fiber.Ctx) error {
 
 func (ctrl *UserController) Update(c *fiber.Ctx) error {
 	id := c.Params("id")
-	var input models.User
+	var input dto.UpdateUserDTO
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": "invalid input"})
 	}
 
-	user, err := ctrl.service.Update(id, &input)
+	user, err := ctrl.service.Update(id, input)
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
 	}

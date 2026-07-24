@@ -13,6 +13,10 @@ type ComplainRepository interface {
 	Create(complain *models.Complain) error
 	GetByID(id uuid.UUID) (*models.Complain, error)
 	GetAll() ([]models.Complain, error)
+	GetByIDForUser(id, userID uuid.UUID) (*models.Complain, error)
+	GetAllByUserID(userID uuid.UUID) ([]models.Complain, error)
+	CustomerBelongsToUser(customerID, userID uuid.UUID) (bool, error)
+	SubscriptionBelongsToCustomer(subscriptionID, customerID uuid.UUID) (bool, error)
 	Update(complain *models.Complain) error
 	Delete(id uuid.UUID) error
 }
@@ -54,6 +58,51 @@ func (r *complainRepository) GetAll() ([]models.Complain, error) {
 		return nil, err
 	}
 	return complains, nil
+}
+
+func (r *complainRepository) GetByIDForUser(id, userID uuid.UUID) (*models.Complain, error) {
+	var complain models.Complain
+	if err := r.withRelations().
+		Joins("JOIN customers AS owner_customers ON owner_customers.id = complains.customer_id").
+		Where("complains.id = ? AND owner_customers.user_id = ?", id, userID).
+		First(&complain).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &complain, nil
+}
+
+func (r *complainRepository) GetAllByUserID(userID uuid.UUID) ([]models.Complain, error) {
+	var complains []models.Complain
+	if err := r.withRelations().
+		Joins("JOIN customers AS owner_customers ON owner_customers.id = complains.customer_id").
+		Where("owner_customers.user_id = ?", userID).
+		Find(&complains).Error; err != nil {
+		return nil, err
+	}
+	return complains, nil
+}
+
+func (r *complainRepository) CustomerBelongsToUser(customerID, userID uuid.UUID) (bool, error) {
+	var count int64
+	if err := r.db.Model(&models.Customer{}).
+		Where("id = ? AND user_id = ? AND deleted_at IS NULL", customerID, userID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count == 1, nil
+}
+
+func (r *complainRepository) SubscriptionBelongsToCustomer(subscriptionID, customerID uuid.UUID) (bool, error) {
+	var count int64
+	if err := r.db.Model(&models.Subscription{}).
+		Where("id = ? AND customer_id = ? AND deleted_at IS NULL", subscriptionID, customerID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count == 1, nil
 }
 
 func (r *complainRepository) Update(complain *models.Complain) error {

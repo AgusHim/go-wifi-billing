@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -19,7 +20,7 @@ func NewServiceAccountController(service services.ServiceAccountService) *Servic
 }
 
 func (c *ServiceAccountController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/service-accounts")
+	r := router.Group("/admin_api/service-accounts", middlewares.UserProtected())
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
 	r.Get("/:id/status-history", c.GetStatusHistory)

@@ -1,12 +1,12 @@
 package controllers
 
 import (
+	"strings"
+
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"strings"
 )
 
 type NOCController struct {
@@ -20,7 +20,7 @@ func NewNOCController(service services.NOCService, alerts services.AlertService,
 }
 
 func (c *NOCController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/noc", middlewares.UserProtected(), requireNOCRole("admin", "technician", "noc", "root"))
+	r := router.Group("/admin_api/noc", middlewares.UserProtected())
 	r.Get("/overview", c.GetOverview)
 	r.Get("/routers", c.GetRouters)
 	r.Get("/routers/:id/snapshots", c.GetRouterSnapshots)
@@ -28,31 +28,13 @@ func (c *NOCController) RegisterRoutes(router fiber.Router) {
 	r.Get("/customers", c.GetCustomers)
 	r.Get("/reconciliation", c.GetReconciliationFindings)
 	r.Get("/alerts", c.GetAlerts)
-	r.Get("/metrics", requireNOCRole("admin", "noc", "root"), c.GetMetrics)
-	r.Post("/collect", requireNOCRole("admin", "noc", "root"), c.CollectAll)
-	r.Post("/alerts/evaluate", requireNOCRole("admin", "noc", "root"), c.EvaluateAlerts)
+	r.Get("/metrics", c.GetMetrics)
+	r.Post("/collect", c.CollectAll)
+	r.Post("/alerts/evaluate", c.EvaluateAlerts)
 	r.Post("/alerts/:id/ack", c.AcknowledgeAlert)
 	r.Post("/alerts/:id/resolve", c.ResolveAlert)
-	r.Post("/service-accounts/:id/actions", requireNOCRole("admin", "technician", "noc", "root"), c.RunServiceAccountAction)
+	r.Post("/service-accounts/:id/actions", c.RunServiceAccountAction)
 	r.Post("/reconciliation/:id/resolve", c.ResolveReconciliationFinding)
-}
-
-func requireNOCRole(allowed ...string) fiber.Handler {
-	roles := make(map[string]bool, len(allowed))
-	for _, role := range allowed {
-		roles[strings.ToLower(strings.TrimSpace(role))] = true
-	}
-	return func(ctx *fiber.Ctx) error {
-		userClaims, ok := ctx.Locals("user").(jwt.MapClaims)
-		if !ok {
-			return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "Unauthorized"})
-		}
-		role, _ := userClaims["role"].(string)
-		if !roles[strings.ToLower(strings.TrimSpace(role))] {
-			return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "Forbidden"})
-		}
-		return ctx.Next()
-	}
 }
 
 func (c *NOCController) GetMetrics(ctx *fiber.Ctx) error {

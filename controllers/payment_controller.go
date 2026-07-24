@@ -25,22 +25,20 @@ func NewPaymentController(service services.PaymentService) *PaymentController {
 
 func (c *PaymentController) RegisterRoutes(router fiber.Router) {
 	router.Post("/api/payments/callback", c.MidtransCallback)
-	user_api := router.Group("/user_api/payments")
-	user_api.Get("/", middlewares.UserProtected(), c.GetAll)
-	user_api.Post("/midtrans", middlewares.UserProtected(), c.CreateMidtrans)
-	user_api.Get("/me", middlewares.UserProtected(), c.GetMyPayments)
-	user_api.Get("/user/:user_id", middlewares.UserProtected(), c.GetByUserID)
+	user_api := router.Group("/user_api/payments", middlewares.UserProtected())
+	user_api.Get("/", c.GetMyPayments)
+	user_api.Post("/midtrans", c.CreateMidtrans)
+	user_api.Get("/me", c.GetMyPayments)
+	user_api.Get("/user/:user_id", c.GetByUserID)
 
 	admin_api := router.Group("/admin_api/payments")
-	adminOnly := middlewares.RequireRoles("root", "admin")
-	paymentOps := middlewares.RequireRoles("root", "admin", "loket", "petugas")
-	admin_api.Post("/", middlewares.UserProtected(), paymentOps, c.Create)
-	admin_api.Post("/batch", middlewares.UserProtected(), paymentOps, c.BatchCreate)
-	admin_api.Get("/", middlewares.UserProtected(), paymentOps, c.GetAll)
-	admin_api.Get("/export/csv", middlewares.UserProtected(), paymentOps, c.ExportCSV)
-	admin_api.Get("/:id", middlewares.UserProtected(), paymentOps, c.GetByID)
-	admin_api.Put("/:id", middlewares.UserProtected(), paymentOps, c.Update)
-	admin_api.Delete("/:id", middlewares.UserProtected(), adminOnly, c.Delete)
+	admin_api.Post("/", middlewares.UserProtected(), c.Create)
+	admin_api.Post("/batch", middlewares.UserProtected(), c.BatchCreate)
+	admin_api.Get("/", middlewares.UserProtected(), c.GetAll)
+	admin_api.Get("/export/csv", middlewares.UserProtected(), c.ExportCSV)
+	admin_api.Get("/:id", middlewares.UserProtected(), c.GetByID)
+	admin_api.Put("/:id", middlewares.UserProtected(), c.Update)
+	admin_api.Delete("/:id", middlewares.UserProtected(), c.Delete)
 }
 
 func (c *PaymentController) GetAll(ctx *fiber.Ctx) error {
@@ -59,23 +57,7 @@ func (c *PaymentController) GetAll(ctx *fiber.Ctx) error {
 		limit = 20
 	}
 
-	// Check if user is root, if yes, get all data without pagination
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "root" {
-			limit = 999999
-			page = 1
-		}
-	}
-
-	// Loket can only see their own payments regardless of query.
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		userID, _ := userClaims["user_id"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "loket" && strings.TrimSpace(userID) != "" {
-			adminID = userID
-		}
-	}
+	adminID = scopedAdminID(ctx, adminID)
 
 	data, total, err := c.service.GetAll(adminID, search, status, startAt, endAt, page, limit)
 	if err != nil {
@@ -109,13 +91,7 @@ func (c *PaymentController) ExportCSV(ctx *fiber.Ctx) error {
 	startAt := strings.TrimSpace(ctx.Query("start_at", ""))
 	endAt := strings.TrimSpace(ctx.Query("end_at", ""))
 
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		userID, _ := userClaims["user_id"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "loket" && strings.TrimSpace(userID) != "" {
-			adminID = userID
-		}
-	}
+	adminID = scopedAdminID(ctx, adminID)
 
 	content, err := c.service.ExportCSV(adminID, search, status, startAt, endAt)
 	if err != nil {
@@ -144,12 +120,9 @@ func (c *PaymentController) GetByID(ctx *fiber.Ctx) error {
 }
 func (c *PaymentController) GetByUserID(ctx *fiber.Ctx) error {
 	userID := ctx.Params("user_id")
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		currentUserID, _ := userClaims["user_id"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "user" && currentUserID != userID {
-			return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "forbidden"})
-		}
+	currentUserID, ok := authenticatedUserID(ctx)
+	if !ok || currentUserID.String() != userID {
+		return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "forbidden"})
 	}
 
 	data, err := c.service.GetByUserID(userID)

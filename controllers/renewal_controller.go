@@ -3,6 +3,7 @@ package controllers
 import (
 	"strconv"
 
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -17,7 +18,7 @@ func NewRenewalController(service services.RenewalService) *RenewalController {
 }
 
 func (c *RenewalController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/renewals")
+	r := router.Group("/admin_api/renewals", middlewares.UserProtected())
 	r.Post("/auto-generate", c.RunAutoGenerate)
 	r.Get("/subscriptions/:id", c.GetSubscriptionHistory)
 	r.Post("/subscriptions/:id/sync-recurring", c.SyncRecurringProfile)

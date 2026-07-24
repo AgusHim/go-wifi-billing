@@ -61,7 +61,6 @@ func (s *customerService) Create(body *dto.CreateCustomerDTO) (*models.Customer,
 			Email:      *body.Email,
 			Phone:      *body.Phone,
 			Password:   *body.Password,
-			Role:       "customer",
 			CoverageID: body.CoverageID,
 		})
 		if err != nil {
@@ -264,11 +263,9 @@ func (s *customerService) Update(id uuid.UUID, input *dto.CreateCustomerDTO) (*m
 		return nil, err
 	}
 
-	user.Name = *input.Name
-	user.Email = *input.Email
-	user.Phone = *input.Phone
-
-	_, err = s.userService.Update(user.ID.String(), user)
+	_, err = s.userService.UpdateProfile(user.ID.String(), dto.UpdateProfileDTO{
+		Name: input.Name, Email: input.Email, Phone: input.Phone,
+	})
 	if err != nil {
 		return nil, err
 	}

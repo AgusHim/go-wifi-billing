@@ -3,6 +3,7 @@ package controllers
 import (
 	"strings"
 
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -18,7 +19,7 @@ func NewRouterController(service services.RouterService) *RouterController {
 }
 
 func (c *RouterController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/routers")
+	r := router.Group("/admin_api/routers", middlewares.UserProtected())
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
 	r.Get("/:id/resources", c.GetResources)
@@ -30,7 +31,7 @@ func (c *RouterController) RegisterRoutes(router fiber.Router) {
 	r.Post("/:id/test-connection", c.TestConnection)
 	r.Put("/:id", c.Update)
 	r.Delete("/:id", c.Delete)
-	router.Get("/admin_api/router-import-batches/:id", c.GetImportBatch)
+	router.Get("/admin_api/router-import-batches/:id", middlewares.UserProtected(), c.GetImportBatch)
 }
 
 func (c *RouterController) Create(ctx *fiber.Ctx) error {

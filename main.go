@@ -22,7 +22,7 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 	dsn := os.Getenv("POSTGRES_URL")
-	log.Printf("dsn: %s", dsn)
+	log.Printf("database_configured: %t", dsn != "")
 
 	midtrans_server := os.Getenv("MIDTRANS_SERVER_KEY")
 	log.Printf("midtrans_server_configured: %t", midtrans_server != "")
@@ -38,6 +38,9 @@ func main() {
 	}
 
 	seed.Seed(gormDB)
+	if err := seed.SeedAccessControl(gormDB, os.Getenv("INITIAL_OWNER_EMAIL")); err != nil {
+		log.Fatalf("access control bootstrap failed: %v", err)
+	}
 
 	// Init repository, service, controller
 	coverageRepo := repositories.NewCoverageRepository(gormDB)
@@ -46,7 +49,12 @@ func main() {
 
 	userRepo := repositories.NewUserRepository(gormDB)
 	userSvc := services.NewUserService(userRepo)
-	userCtrl := controllers.NewUserController(userSvc)
+	authorizationRepo := repositories.NewAuthorizationRepository(gormDB)
+	authorizationSvc := services.NewAuthorizationService(authorizationRepo)
+	userCtrl := controllers.NewUserController(userSvc, authorizationSvc)
+	accessControlRepo := repositories.NewAccessControlRepository(gormDB)
+	accessControlSvc := services.NewAccessControlService(accessControlRepo, authorizationSvc)
+	accessControlCtrl := controllers.NewAccessControlController(accessControlSvc, authorizationSvc)
 
 	packageRepo := repositories.NewPackageRepository(gormDB)
 	packageSvc := services.NewPackageService(packageRepo)
@@ -189,6 +197,8 @@ func main() {
 		financeCtrl,
 		settingCtrl,
 		inventoryCtrl,
+		accessControlCtrl,
+		authorizationSvc,
 	)
 
 	port := os.Getenv("PORT")

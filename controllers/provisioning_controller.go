@@ -3,6 +3,7 @@ package controllers
 import (
 	"strconv"
 
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 )
@@ -16,7 +17,7 @@ func NewProvisioningController(service services.ProvisioningService) *Provisioni
 }
 
 func (c *ProvisioningController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/provisioning")
+	r := router.Group("/admin_api/provisioning", middlewares.UserProtected())
 	r.Get("/jobs", c.GetJobs)
 	r.Get("/logs", c.GetLogs)
 }

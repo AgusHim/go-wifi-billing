@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 )
@@ -14,7 +15,7 @@ func NewSettingController(service services.SettingService) *SettingController {
 }
 
 func (c *SettingController) RegisterRoutes(router fiber.Router) {
-	api := router.Group("/admin_api/settings")
+	api := router.Group("/admin_api/settings", middlewares.UserProtected())
 	api.Get("/", c.GetAll)
 	api.Get("/:key", c.GetByKey)
 	api.Put("/:key", c.UpdateOrCreate)

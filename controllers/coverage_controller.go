@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"github.com/Agushim/go_wifi_billing/dto"
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 )
@@ -15,7 +16,7 @@ func NewCoverageController(s services.CoverageService) *CoverageController {
 }
 
 func (c *CoverageController) RegisterRoutes(router fiber.Router) {
-	g := router.Group("/admin_api/coverages")
+	g := router.Group("/admin_api/coverages", middlewares.UserProtected())
 	g.Post("/", c.Create)
 	g.Get("/", c.GetAll)
 	g.Get("/:id", c.GetByID)

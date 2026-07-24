@@ -20,28 +20,26 @@ func (c *BillController) RegisterRoutes(router fiber.Router) {
 	api := router.Group("/api/bills")
 	api.Get("/:public_id", c.GetByPublicID)
 
-	user_api := router.Group("/user_api/bills")
-	user_api.Get("/", middlewares.UserProtected(), c.GetAll)
-	user_api.Get("/me", middlewares.UserProtected(), c.GetByUserID)
-	user_api.Get("/public/:public_id", c.GetByPublicID)
+	router.Get("/user_api/bills/public/:public_id", c.GetByPublicID)
+	user_api := router.Group("/user_api/bills", middlewares.UserProtected())
+	user_api.Get("/", c.GetByUserID)
+	user_api.Get("/me", c.GetByUserID)
 	admin_api := router.Group("/admin_api/bills")
-	adminOnly := middlewares.RequireRoles("root", "admin")
-	billingOps := middlewares.RequireRoles("root", "admin", "loket", "petugas")
-	admin_api.Get("/dashboard/stats", middlewares.UserProtected(), billingOps, c.GetDashboardStats)
-	admin_api.Get("/dashboard/charts", middlewares.UserProtected(), billingOps, c.GetDashboardCharts)
-	admin_api.Get("/recent/paid", middlewares.UserProtected(), billingOps, c.GetRecentPaidBills)
-	admin_api.Get("/missing/current-month", middlewares.UserProtected(), billingOps, c.GetMissingCurrentMonthBills)
-	admin_api.Get("/generate", middlewares.UserProtected(), billingOps, c.GenerateMonthlyBills)
-	admin_api.Post("/generate", middlewares.UserProtected(), billingOps, c.GenerateMonthlyBills)
-	admin_api.Post("/generate/dry-run", middlewares.UserProtected(), billingOps, c.PreviewMonthlyBills)
-	admin_api.Post("/mark-overdue", middlewares.UserProtected(), billingOps, c.MarkOverdueBills)
-	admin_api.Get("/send-reminders", middlewares.UserProtected(), billingOps, c.SendReminders)
-	admin_api.Post("/create", middlewares.UserProtected(), billingOps, c.Create)
-	admin_api.Get("/", middlewares.UserProtected(), billingOps, c.GetAll)
-	admin_api.Get("/:id", middlewares.UserProtected(), billingOps, c.GetByID)
-	admin_api.Put("/:id", middlewares.UserProtected(), billingOps, c.Update)
-	admin_api.Delete("/generated/current-month/unpaid", middlewares.UserProtected(), adminOnly, c.DeleteCurrentMonthUnpaidBills)
-	admin_api.Delete("/:id", middlewares.UserProtected(), adminOnly, c.Delete)
+	admin_api.Get("/dashboard/stats", middlewares.UserProtected(), c.GetDashboardStats)
+	admin_api.Get("/dashboard/charts", middlewares.UserProtected(), c.GetDashboardCharts)
+	admin_api.Get("/recent/paid", middlewares.UserProtected(), c.GetRecentPaidBills)
+	admin_api.Get("/missing/current-month", middlewares.UserProtected(), c.GetMissingCurrentMonthBills)
+	admin_api.Get("/generate", middlewares.UserProtected(), c.GenerateMonthlyBills)
+	admin_api.Post("/generate", middlewares.UserProtected(), c.GenerateMonthlyBills)
+	admin_api.Post("/generate/dry-run", middlewares.UserProtected(), c.PreviewMonthlyBills)
+	admin_api.Post("/mark-overdue", middlewares.UserProtected(), c.MarkOverdueBills)
+	admin_api.Get("/send-reminders", middlewares.UserProtected(), c.SendReminders)
+	admin_api.Post("/create", middlewares.UserProtected(), c.Create)
+	admin_api.Get("/", middlewares.UserProtected(), c.GetAll)
+	admin_api.Get("/:id", middlewares.UserProtected(), c.GetByID)
+	admin_api.Put("/:id", middlewares.UserProtected(), c.Update)
+	admin_api.Delete("/generated/current-month/unpaid", middlewares.UserProtected(), c.DeleteCurrentMonthUnpaidBills)
+	admin_api.Delete("/:id", middlewares.UserProtected(), c.Delete)
 }
 
 func NewBillController(service services.BillService) *BillController {
@@ -58,15 +56,6 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 	endAt := strings.TrimSpace(ctx.Query("end_at", ""))
 	page, _ := strconv.Atoi(pageStr)
 	limit, _ := strconv.Atoi(limitStr)
-
-	// Check if user is root, if yes, get all data without pagination
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		if strings.ToLower(strings.TrimSpace(role)) == "root" {
-			limit = 999999
-			page = 1
-		}
-	}
 
 	// Parse coverage_ids (both coverage_ids and coverage_ids[] formats) manually
 	var coverageIDs []string
@@ -91,14 +80,7 @@ func (c *BillController) GetAll(ctx *fiber.Ctx) error {
 		}
 	}
 
-	// If endpoint is accessed with authenticated non-admin user, force filter to own user ID.
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		userID, _ := userClaims["user_id"].(string)
-		if strings.TrimSpace(role) != "" && strings.ToLower(role) != "admin" && strings.TrimSpace(userID) != "" {
-			adminID = userID
-		}
-	}
+	adminID = scopedAdminID(ctx, adminID)
 
 	data, total, err := c.service.GetAll(page, limit, search, adminID, status, startAt, endAt, coverageIDs)
 	if err != nil {
@@ -156,14 +138,7 @@ func (c *BillController) GetMissingCurrentMonthBills(ctx *fiber.Ctx) error {
 		}
 	}
 
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		userID, _ := userClaims["user_id"].(string)
-		role = strings.ToLower(strings.TrimSpace(role))
-		if role != "admin" && role != "root" && strings.TrimSpace(userID) != "" {
-			adminID = userID
-		}
-	}
+	adminID = scopedAdminID(ctx, adminID)
 
 	result, total, err := c.service.GetMissingCurrentMonthBills(page, limit, search, adminID, coverageIDs)
 	if err != nil {
@@ -369,13 +344,7 @@ func (c *BillController) GetDashboardStats(ctx *fiber.Ctx) error {
 	month, _ := strconv.Atoi(monthStr)
 	year, _ := strconv.Atoi(yearStr)
 
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		userID, _ := userClaims["user_id"].(string)
-		if strings.TrimSpace(role) != "" && strings.ToLower(role) != "admin" && strings.TrimSpace(userID) != "" {
-			adminID = userID
-		}
-	}
+	adminID = scopedAdminID(ctx, adminID)
 
 	stats, err := c.service.GetDashboardStats(month, year, adminID)
 	if err != nil {
@@ -392,13 +361,7 @@ func (c *BillController) GetDashboardCharts(ctx *fiber.Ctx) error {
 		return ctx.Status(400).JSON(fiber.Map{"success": false, "message": "invalid months"})
 	}
 
-	if userClaims, ok := ctx.Locals("user").(jwt.MapClaims); ok {
-		role, _ := userClaims["role"].(string)
-		userID, _ := userClaims["user_id"].(string)
-		if strings.TrimSpace(role) != "" && strings.ToLower(role) != "admin" && strings.TrimSpace(userID) != "" {
-			adminID = userID
-		}
-	}
+	adminID = scopedAdminID(ctx, adminID)
 
 	charts, err := c.service.GetDashboardCharts(months, adminID)
 	if err != nil {

@@ -41,7 +41,12 @@ func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&models.Coverage{},
 		&models.Package{},
+		&models.Role{},
+		&models.Permission{},
 		&models.User{},
+		&models.RolePermission{},
+		&models.UserPermissionOverride{},
+		&models.AccessAuditLog{},
 		&models.Odc{},
 		&models.Odp{},
 		&models.Router{},

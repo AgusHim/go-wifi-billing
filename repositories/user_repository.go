@@ -14,6 +14,7 @@ type UserRepository interface {
 	Create(user *models.User) error
 	GetByEmail(email string) (*models.User, error)
 	GetByID(id uuid.UUID) (*models.User, error)
+	GetRoleByKey(key string) (*models.Role, error)
 	GetAll(page int, limit int, roles []string, search string) ([]models.User, int64, error)
 	Update(user *models.User) error
 	Delete(id uuid.UUID) error
@@ -44,10 +45,18 @@ func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 
 func (r *userRepository) GetByID(id uuid.UUID) (*models.User, error) {
 	var u models.User
-	if err := r.db.First(&u, "id = ? AND deleted_at IS NULL", id).Error; err != nil {
+	if err := r.db.Preload("RoleDefinition").First(&u, "id = ? AND deleted_at IS NULL", id).Error; err != nil {
 		return nil, err
 	}
 	return &u, nil
+}
+
+func (r *userRepository) GetRoleByKey(key string) (*models.Role, error) {
+	var role models.Role
+	if err := r.db.Where("key = ? AND is_active = ?", key, true).First(&role).Error; err != nil {
+		return nil, err
+	}
+	return &role, nil
 }
 
 func (r *userRepository) GetAll(page int, limit int, roles []string, search string) ([]models.User, int64, error) {

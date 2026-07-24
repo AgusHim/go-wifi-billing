@@ -2,6 +2,8 @@ package routes
 
 import (
 	"github.com/Agushim/go_wifi_billing/controllers"
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
+	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -30,7 +32,11 @@ func Setup(
 	financeCtrl *controllers.FinanceController,
 	settingCtrl *controllers.SettingController,
 	inventoryCtrl *controllers.InventoryController,
+	accessControlCtrl *controllers.AccessControlController,
+	authorizationService services.AuthorizationService,
 ) {
+	// Fail closed for every private namespace before controller route handlers.
+	app.Use(middlewares.EnforceRoutePermissions(authorizationService))
 
 	coverageCtrl.RegisterRoutes(app)
 	userCtrl.RegisterRoutes(app)
@@ -55,6 +61,7 @@ func Setup(
 	financeCtrl.RegisterRoutes(app)
 	settingCtrl.RegisterRoutes(app)
 	inventoryCtrl.RegisterRoutes(app)
+	accessControlCtrl.RegisterRoutes(app)
 
 	// health
 	app.Get("/health", func(c *fiber.Ctx) error {

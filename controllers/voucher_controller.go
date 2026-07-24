@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -16,12 +17,12 @@ func NewVoucherController(service services.VoucherService) *VoucherController {
 }
 
 func (c *VoucherController) RegisterRoutes(router fiber.Router) {
-	batches := router.Group("/admin_api/voucher-batches")
+	batches := router.Group("/admin_api/voucher-batches", middlewares.UserProtected())
 	batches.Get("/", c.GetBatches)
 	batches.Get("/:id", c.GetBatchByID)
 	batches.Post("/", c.CreateBatch)
 
-	vouchers := router.Group("/admin_api/vouchers")
+	vouchers := router.Group("/admin_api/vouchers", middlewares.UserProtected())
 	vouchers.Get("/", c.GetVouchers)
 	vouchers.Get("/:id", c.GetVoucherByID)
 

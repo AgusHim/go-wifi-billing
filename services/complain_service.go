@@ -10,10 +10,15 @@ import (
 
 type ComplainService interface {
 	Create(input *models.Complain) (*models.Complain, error)
+	CreateForUser(userID uuid.UUID, input *models.Complain) (*models.Complain, error)
 	GetAll() ([]models.Complain, error)
+	GetAllForUser(userID uuid.UUID) ([]models.Complain, error)
 	GetByID(id uuid.UUID) (*models.Complain, error)
+	GetByIDForUser(id, userID uuid.UUID) (*models.Complain, error)
 	Update(id uuid.UUID, input *models.Complain) (*models.Complain, error)
+	UpdateForUser(id, userID uuid.UUID, input *models.Complain) (*models.Complain, error)
 	Delete(id uuid.UUID) error
+	DeleteForUser(id, userID uuid.UUID) error
 }
 
 type complainService struct {
@@ -38,12 +43,49 @@ func (s *complainService) Create(input *models.Complain) (*models.Complain, erro
 	return input, nil
 }
 
+func (s *complainService) CreateForUser(userID uuid.UUID, input *models.Complain) (*models.Complain, error) {
+	belongs, err := s.repo.CustomerBelongsToUser(input.CustomerID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !belongs {
+		return nil, errors.New("forbidden")
+	}
+	subscriptionBelongs, err := s.repo.SubscriptionBelongsToCustomer(input.SubscriptionID, input.CustomerID)
+	if err != nil {
+		return nil, err
+	}
+	if !subscriptionBelongs {
+		return nil, errors.New("forbidden")
+	}
+	input.Status = "open"
+	input.TechnicianID = nil
+	input.ResolutionNote = ""
+	input.ResolvedAt = nil
+	return s.Create(input)
+}
+
 func (s *complainService) GetAll() ([]models.Complain, error) {
 	return s.repo.GetAll()
 }
 
+func (s *complainService) GetAllForUser(userID uuid.UUID) ([]models.Complain, error) {
+	return s.repo.GetAllByUserID(userID)
+}
+
 func (s *complainService) GetByID(id uuid.UUID) (*models.Complain, error) {
 	complain, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if complain == nil {
+		return nil, errors.New("complain not found")
+	}
+	return complain, nil
+}
+
+func (s *complainService) GetByIDForUser(id, userID uuid.UUID) (*models.Complain, error) {
+	complain, err := s.repo.GetByIDForUser(id, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +121,35 @@ func (s *complainService) Update(id uuid.UUID, input *models.Complain) (*models.
 	return existing, nil
 }
 
+func (s *complainService) UpdateForUser(id, userID uuid.UUID, input *models.Complain) (*models.Complain, error) {
+	existing, err := s.repo.GetByIDForUser(id, userID)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, errors.New("complain not found")
+	}
+	existing.ComplaintType = input.ComplaintType
+	existing.Description = input.Description
+	if err := s.repo.Update(existing); err != nil {
+		return nil, err
+	}
+	return existing, nil
+}
+
 func (s *complainService) Delete(id uuid.UUID) error {
 	existing, err := s.repo.GetByID(id)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return errors.New("complain not found")
+	}
+	return s.repo.Delete(id)
+}
+
+func (s *complainService) DeleteForUser(id, userID uuid.UUID) error {
+	existing, err := s.repo.GetByIDForUser(id, userID)
 	if err != nil {
 		return err
 	}

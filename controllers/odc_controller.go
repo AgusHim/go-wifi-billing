@@ -3,6 +3,7 @@ package controllers
 import (
 	"strings"
 
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 
@@ -19,7 +20,7 @@ func NewOdcController(service services.OdcService) *OdcController {
 }
 
 func (c *OdcController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/odcs")
+	r := router.Group("/admin_api/odcs", middlewares.UserProtected())
 	r.Get("/", c.GetAll)
 	r.Get("/:id", c.GetByID)
 	r.Post("/", c.Create)

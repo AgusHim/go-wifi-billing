@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -16,7 +17,7 @@ func NewNetworkPlanController(service services.NetworkPlanService) *NetworkPlanC
 }
 
 func (c *NetworkPlanController) RegisterRoutes(router fiber.Router) {
-	r := router.Group("/admin_api/network-plans")
+	r := router.Group("/admin_api/network-plans", middlewares.UserProtected())
 	r.Get("/", c.GetAll)
 	r.Post("/sync-from-router", c.SyncFromRouter)
 	r.Get("/:id", c.GetByID)

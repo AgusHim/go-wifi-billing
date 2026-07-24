@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
@@ -16,7 +17,7 @@ func NewComplainController(service services.ComplainService) *ComplainController
 }
 
 func (c *ComplainController) RegisterRoutes(router fiber.Router) {
-	group := router.Group("/admin_api/complains")
+	group := router.Group("/admin_api/complains", middlewares.UserProtected())
 	group.Post("/", c.Create)
 	group.Get("/", c.GetAll)
 	group.Get("/:id", c.GetByID)
@@ -33,8 +34,17 @@ func (c *ComplainController) Create(ctx *fiber.Ctx) error {
 			"message": err.Error(),
 		})
 	}
-	created, err := c.service.Create(&payload)
+	var created *models.Complain
+	var err error
+	if userID, customer := authenticatedCustomerUserID(ctx); customer {
+		created, err = c.service.CreateForUser(userID, &payload)
+	} else {
+		created, err = c.service.Create(&payload)
+	}
 	if err != nil {
+		if err.Error() == "forbidden" {
+			return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "data": nil, "message": "forbidden"})
+		}
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
 			"data":    nil,
@@ -49,7 +59,13 @@ func (c *ComplainController) Create(ctx *fiber.Ctx) error {
 }
 
 func (c *ComplainController) GetAll(ctx *fiber.Ctx) error {
-	complains, err := c.service.GetAll()
+	var complains []models.Complain
+	var err error
+	if userID, customer := authenticatedCustomerUserID(ctx); customer {
+		complains, err = c.service.GetAllForUser(userID)
+	} else {
+		complains, err = c.service.GetAll()
+	}
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
@@ -73,7 +89,12 @@ func (c *ComplainController) GetByID(ctx *fiber.Ctx) error {
 			"message": "Invalid ID",
 		})
 	}
-	complain, err := c.service.GetByID(id)
+	var complain *models.Complain
+	if userID, customer := authenticatedCustomerUserID(ctx); customer {
+		complain, err = c.service.GetByIDForUser(id, userID)
+	} else {
+		complain, err = c.service.GetByID(id)
+	}
 	if err != nil {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"success": false,
@@ -105,7 +126,12 @@ func (c *ComplainController) Update(ctx *fiber.Ctx) error {
 			"message": err.Error(),
 		})
 	}
-	updated, err := c.service.Update(id, &payload)
+	var updated *models.Complain
+	if userID, customer := authenticatedCustomerUserID(ctx); customer {
+		updated, err = c.service.UpdateForUser(id, userID, &payload)
+	} else {
+		updated, err = c.service.Update(id, &payload)
+	}
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"success": false,
@@ -129,11 +155,17 @@ func (c *ComplainController) Delete(ctx *fiber.Ctx) error {
 			"message": "Invalid ID",
 		})
 	}
-	if err := c.service.Delete(id); err != nil {
+	var deleteErr error
+	if userID, customer := authenticatedCustomerUserID(ctx); customer {
+		deleteErr = c.service.DeleteForUser(id, userID)
+	} else {
+		deleteErr = c.service.Delete(id)
+	}
+	if deleteErr != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"success": false,
 			"data":    nil,
-			"message": err.Error(),
+			"message": deleteErr.Error(),
 		})
 	}
 	return ctx.JSON(fiber.Map{
