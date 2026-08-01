@@ -728,7 +728,11 @@ func shouldGenerateBillForMonth(sub models.Subscription, billMonthStart time.Tim
 
 	if !sub.EndDate.IsZero() {
 		subEndMonth := monthStartInLocation(sub.EndDate, loc)
-		if subEndMonth.Before(billMonthStart) {
+		// Subscription yang masa aktifnya berakhir pada bulan sebelumnya tetap
+		// harus menerima tagihan periode berikutnya. Pembayaran bill tersebut
+		// yang akan memperpanjang StartDate/EndDate ke periode bill.
+		previousBillMonth := billMonthStart.AddDate(0, -1, 0)
+		if subEndMonth.Before(previousBillMonth) {
 			return false
 		}
 	}
@@ -753,8 +757,8 @@ func diagnoseMissingCurrentMonthBill(sub models.Subscription, billMonthStart tim
 	if !sub.StartDate.IsZero() && billMonthStart.Before(monthStartInLocation(sub.StartDate, loc)) {
 		return "subscription_not_started", "Periode subscription belum dimulai pada bulan ini.", false
 	}
-	if !sub.EndDate.IsZero() && monthStartInLocation(sub.EndDate, loc).Before(billMonthStart) {
-		return "subscription_ended", "Periode subscription sudah berakhir sebelum bulan ini.", false
+	if !sub.EndDate.IsZero() && monthStartInLocation(sub.EndDate, loc).Before(billMonthStart.AddDate(0, -1, 0)) {
+		return "subscription_ended", "Periode subscription sudah berakhir sebelum periode tagihan sebelumnya.", false
 	}
 	if sub.Package == nil {
 		return "package_missing", "Paket subscription tidak tersedia sehingga nominal tagihan tidak dapat dihitung.", false

@@ -29,7 +29,7 @@ func TestShouldGenerateBillForMonthSkipsFutureSubscriptionStoredInUTC(t *testing
 	}
 }
 
-func TestShouldGenerateBillForMonthSkipsSubscriptionEndedBeforeBillMonth(t *testing.T) {
+func TestShouldGenerateBillForMonthIncludesSubscriptionEndedInPreviousMonth(t *testing.T) {
 	loc, err := time.LoadLocation("Asia/Jakarta")
 	if err != nil {
 		t.Fatalf("load location: %v", err)
@@ -46,8 +46,25 @@ func TestShouldGenerateBillForMonthSkipsSubscriptionEndedBeforeBillMonth(t *test
 	}
 
 	augustBillMonth := time.Date(2026, time.August, 1, 0, 0, 0, 0, loc)
+	if !shouldGenerateBillForMonth(subscription, augustBillMonth, loc) {
+		t.Fatal("expected subscription ending in July to generate for August bills")
+	}
+}
+
+func TestShouldGenerateBillForMonthSkipsSubscriptionEndedBeforePreviousMonth(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+
+	subscription := models.Subscription{
+		StartDate: time.Date(2026, time.May, 1, 0, 0, 0, 0, loc),
+		EndDate:   time.Date(2026, time.June, 30, 23, 59, 59, 0, loc),
+	}
+
+	augustBillMonth := time.Date(2026, time.August, 1, 0, 0, 0, 0, loc)
 	if shouldGenerateBillForMonth(subscription, augustBillMonth, loc) {
-		t.Fatal("expected subscription ending in July to be skipped for August bills")
+		t.Fatal("expected subscription ending before July to be skipped for August bills")
 	}
 }
 
@@ -86,10 +103,20 @@ func TestDiagnoseMissingCurrentMonthBill(t *testing.T) {
 			name: "ended",
 			subscription: models.Subscription{
 				Status:  "active",
-				EndDate: time.Date(2026, time.June, 30, 23, 59, 59, 0, loc),
+				EndDate: time.Date(2026, time.May, 31, 23, 59, 59, 0, loc),
 				Package: availablePackage,
 			},
 			wantCode: "subscription_ended",
+		},
+		{
+			name: "ended in previous month",
+			subscription: models.Subscription{
+				Status:  "active",
+				EndDate: time.Date(2026, time.June, 30, 23, 59, 59, 0, loc),
+				Package: availablePackage,
+			},
+			wantCode:     "eligible_not_generated",
+			wantEligible: true,
 		},
 		{
 			name: "missing package",
