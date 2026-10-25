@@ -104,5 +104,12 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.AccountingPeriodLock{},
 		&models.SupplierInvoice{},
 		&models.SupplierPayment{},
+		&models.Partner{},
+		&models.PartnerMember{},
+		&models.PartnerBandwidthService{},
+		&models.PartnerInvoice{},
+		&models.PartnerInvoiceLine{},
+		&models.PartnerPayment{},
+		&models.PartnerInvoiceNotification{},
 	)
 }

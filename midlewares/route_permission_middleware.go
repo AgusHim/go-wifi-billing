@@ -196,6 +196,28 @@ var RoutePermissionPolicies = []RoutePermissionPolicy{
 func init() {
 	addInventoryPolicies()
 	addAccessControlPolicies()
+	addPartnerPolicies()
+}
+
+func addPartnerPolicies() {
+	partnerPolicies := []RoutePermissionPolicy{
+		{Method: http.MethodGet, Path: "/admin_api/partners", Permission: "partners.read", DataScope: "global", Risk: "low"},
+		{Method: http.MethodPost, Path: "/admin_api/partners", Permission: "partners.manage", DataScope: "global", Risk: "high"},
+		{Method: http.MethodPost, Path: "/admin_api/partners/:id/members", Permission: "partners.manage", DataScope: "global", Risk: "high"},
+		{Method: http.MethodGet, Path: "/admin_api/partners/:id/services", Permission: "partners.read", DataScope: "global", Risk: "low"},
+		{Method: http.MethodPost, Path: "/admin_api/partners/:id/services", Permission: "partners.manage", DataScope: "global", Risk: "high"},
+		{Method: http.MethodGet, Path: "/admin_api/partners/invoices", Permission: "partners.invoices.read", DataScope: "global", Risk: "low"},
+		{Method: http.MethodPost, Path: "/admin_api/partners/invoices", Permission: "partners.invoices.manage", DataScope: "global", Risk: "high"},
+		{Method: http.MethodGet, Path: "/admin_api/partners/invoices/:id", Permission: "partners.invoices.read", DataScope: "global", Risk: "low"},
+		{Method: http.MethodPost, Path: "/admin_api/partners/invoices/:id/issue", Permission: "partners.invoices.manage", DataScope: "global", Risk: "high"},
+		{Method: http.MethodPost, Path: "/admin_api/partners/payments/:id/review", Permission: "partners.payments.verify", DataScope: "global", Risk: "high"},
+		{Method: http.MethodGet, Path: "/partner_api/me", Permission: "self.partner.read", DataScope: "partner", Risk: "low"},
+		{Method: http.MethodGet, Path: "/partner_api/services", Permission: "self.partner.read", DataScope: "partner", Risk: "low"},
+		{Method: http.MethodGet, Path: "/partner_api/invoices", Permission: "self.partner.read", DataScope: "partner", Risk: "low"},
+		{Method: http.MethodGet, Path: "/partner_api/invoices/:id", Permission: "self.partner.read", DataScope: "partner", Risk: "low"},
+		{Method: http.MethodPost, Path: "/partner_api/invoices/:id/payments", Permission: "self.partner.payments.create", DataScope: "partner", Risk: "medium"},
+	}
+	RoutePermissionPolicies = append(RoutePermissionPolicies, partnerPolicies...)
 }
 
 func EnforceRoutePermissions(authorizationService services.AuthorizationService) fiber.Handler {

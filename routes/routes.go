@@ -34,6 +34,7 @@ func Setup(
 	inventoryCtrl *controllers.InventoryController,
 	accessControlCtrl *controllers.AccessControlController,
 	authorizationService services.AuthorizationService,
+	partnerCtrls ...*controllers.PartnerController,
 ) {
 	// Fail closed for every private namespace before controller route handlers.
 	app.Use(middlewares.EnforceRoutePermissions(authorizationService))
@@ -62,6 +63,11 @@ func Setup(
 	settingCtrl.RegisterRoutes(app)
 	inventoryCtrl.RegisterRoutes(app)
 	accessControlCtrl.RegisterRoutes(app)
+	for _, partnerCtrl := range partnerCtrls {
+		if partnerCtrl != nil {
+			partnerCtrl.RegisterRoutes(app)
+		}
+	}
 
 	// health
 	app.Get("/health", func(c *fiber.Ctx) error {

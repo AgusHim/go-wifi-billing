@@ -164,6 +164,13 @@ var permissionCatalog = []permissionSeed{
 	{Key: "self.payments.create", Name: "Buat pembayaran sendiri", RiskLevel: "medium"},
 	{Key: "self.complaints.manage", Name: "Kelola komplain sendiri", RiskLevel: "low"},
 	{Key: "self.profile.update", Name: "Ubah profil sendiri", RiskLevel: "low"},
+	{Key: "partners.read", Name: "Lihat mitra B2B", RiskLevel: "low"},
+	{Key: "partners.manage", Name: "Kelola mitra B2B", RiskLevel: "high"},
+	{Key: "partners.invoices.read", Name: "Lihat invoice mitra", RiskLevel: "low"},
+	{Key: "partners.invoices.manage", Name: "Kelola invoice mitra", RiskLevel: "high"},
+	{Key: "partners.payments.verify", Name: "Verifikasi pembayaran mitra", RiskLevel: "high"},
+	{Key: "self.partner.read", Name: "Lihat portal mitra sendiri", RiskLevel: "low"},
+	{Key: "self.partner.payments.create", Name: "Ajukan pembayaran mitra", RiskLevel: "medium"},
 }
 
 var defaultRolePermissions = map[string][]string{
@@ -180,17 +187,20 @@ var defaultRolePermissions = map[string][]string{
 		"provisioning_logs.read", "noc.read", "noc.collect", "noc.evaluate_alerts", "noc.manage_alerts", "noc.reconcile", "noc.run_action",
 		"users.read", "users.create", "users.update", "settings.read", "whatsapp.read", "whatsapp.send", "whatsapp_templates.manage",
 		"inventory.read", "inventory.manage_master", "inventory.purchase", "inventory.receive", "inventory.transfer", "inventory.use_material", "inventory.stock_opname", "inventory.approve", "inventory.accounting.read",
+		"partners.read", "partners.manage", "partners.invoices.read", "partners.invoices.manage", "partners.payments.verify",
 	},
 	"petugas": {
 		"dashboard.read", "bills.read", "bills.create", "bills.update", "payments.read", "payments.create", "payments.update",
 		"customers.read", "customers.create", "customers.update", "subscriptions.read", "subscriptions.create", "subscriptions.update",
 		"complaints.read", "complaints.create", "complaints.update", "packages.read", "coverages.read", "odcs.read", "odps.read",
 		"noc.read", "routers.read", "network_plans.read", "service_accounts.read", "inventory.read", "inventory.transfer", "inventory.use_material",
+		"partners.read", "partners.invoices.read", "partners.payments.verify",
 	},
 	"loket": {
 		"dashboard.read", "bills.read", "bills.create", "bills.update", "payments.read", "payments.create", "payments.update",
 		"customers.read", "customers.create", "customers.update", "subscriptions.read", "subscriptions.create", "subscriptions.update",
 		"complaints.read", "complaints.create", "complaints.update", "packages.read", "coverages.read", "odcs.read", "odps.read", "inventory.read",
+		"partners.read", "partners.invoices.read", "partners.invoices.manage", "partners.payments.verify",
 	},
 	"teknisi": {
 		"dashboard.read", "customers.read", "customers.update", "subscriptions.read", "complaints.read", "complaints.update",
@@ -198,7 +208,7 @@ var defaultRolePermissions = map[string][]string{
 		"service_accounts.provision", "service_accounts.suspend", "service_accounts.unsuspend", "noc.read", "noc.manage_alerts", "noc.run_action",
 		"inventory.read", "inventory.transfer", "inventory.use_material",
 	},
-	"customer": {"self.bills.read", "self.payments.read", "self.payments.create", "self.complaints.manage", "self.profile.update", "vouchers.redeem"},
+	"customer": {"self.bills.read", "self.payments.read", "self.payments.create", "self.complaints.manage", "self.profile.update", "vouchers.redeem", "self.partner.read", "self.partner.payments.create"},
 }
 
 // CanonicalRoleKey normalizes legacy role names without mutating the legacy
