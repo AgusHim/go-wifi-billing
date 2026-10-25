@@ -224,6 +224,10 @@ type PartnerBandwidthUsage struct {
 	UpdatedAt    time.Time                `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt           `json:"deleted_at" gorm:"index"`
 	Service      *PartnerBandwidthService `json:"service,omitempty" gorm:"foreignKey:ServiceID"`
+	// PartnerName/PartnerCode are filled for cross-partner listings only and are
+	// never persisted.
+	PartnerName string `json:"partner_name,omitempty" gorm:"-"`
+	PartnerCode string `json:"partner_code,omitempty" gorm:"-"`
 }
 
 func (p *PartnerBandwidthUsage) BeforeCreate(_ *gorm.DB) error {
@@ -257,6 +261,10 @@ type PartnerInventoryAllocation struct {
 	DeletedAt       gorm.DeletedAt       `json:"deleted_at" gorm:"index"`
 	Item            *InventoryItem       `json:"item,omitempty" gorm:"foreignKey:ItemID"`
 	SerialItem      *InventorySerialItem `json:"serial_item,omitempty" gorm:"foreignKey:SerialItemID"`
+	// PartnerName/PartnerCode are filled for cross-partner listings only and are
+	// never persisted.
+	PartnerName string `json:"partner_name,omitempty" gorm:"-"`
+	PartnerCode string `json:"partner_code,omitempty" gorm:"-"`
 }
 
 func (p *PartnerInventoryAllocation) BeforeCreate(_ *gorm.DB) error {

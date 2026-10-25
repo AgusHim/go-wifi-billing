@@ -25,6 +25,9 @@ func (c *PartnerController) RegisterRoutes(router fiber.Router) {
 	admin.Get("/", c.ListPartners)
 	admin.Post("/", c.CreatePartner)
 	admin.Get("/aging", c.AgingReport)
+	admin.Get("/usages", c.ListAllUsages)
+	admin.Get("/allocations", c.ListAllAllocations)
+	admin.Get("/accounts", c.ListAllAccounts)
 	admin.Post("/reminders/send", c.SendReminders)
 	admin.Post("/invoices/mark-overdue", c.MarkOverdueInvoices)
 	admin.Post("/invoices/generate-recurring", c.GenerateRecurringDrafts)
@@ -364,6 +367,46 @@ func (c *PartnerController) ReturnAllocation(ctx *fiber.Ctx) error {
 func (c *PartnerController) AgingReport(ctx *fiber.Ctx) error {
 	rows, err := c.service.AgingReport(nil)
 	return respond(ctx, rows, err, "Success get aging report")
+}
+
+// queryPartnerID reads an optional partner_id filter shared by the
+// cross-partner list endpoints.
+func queryPartnerID(ctx *fiber.Ctx) (*uuid.UUID, error) {
+	raw := strings.TrimSpace(ctx.Query("partner_id"))
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := uuid.Parse(raw)
+	if err != nil {
+		return nil, errors.New("invalid partner_id")
+	}
+	return &parsed, nil
+}
+
+// ListAllUsages lists bandwidth readings across every partner.
+func (c *PartnerController) ListAllUsages(ctx *fiber.Ctx) error {
+	partnerID, err := queryPartnerID(ctx)
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	rows, err := c.service.ListUsages(partnerID, nil, strings.TrimSpace(ctx.Query("status")))
+	return respond(ctx, rows, err, "Success get usages")
+}
+
+// ListAllAllocations lists inventory allocations across every partner.
+func (c *PartnerController) ListAllAllocations(ctx *fiber.Ctx) error {
+	partnerID, err := queryPartnerID(ctx)
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	rows, err := c.service.ListAllocations(partnerID, strings.TrimSpace(ctx.Query("status")), strings.TrimSpace(ctx.Query("transaction_type")))
+	return respond(ctx, rows, err, "Success get allocations")
+}
+
+// ListAllAccounts lists every partner portal login account.
+func (c *PartnerController) ListAllAccounts(ctx *fiber.Ctx) error {
+	rows, err := c.service.ListAllPartnerAccounts()
+	return respond(ctx, rows, err, "Success get partner accounts")
 }
 func (c *PartnerController) SendReminders(ctx *fiber.Ctx) error {
 	count, err := c.service.SendDueReminders()

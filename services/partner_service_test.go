@@ -422,6 +422,23 @@ func TestPartnerLoginAccountCreation(t *testing.T) {
 	if _, err := svc.CreatePartnerAccount(result.Partner.ID, dto.PartnerAccountRequest{Name: "Budi", Email: "budi@mitra7.id"}, uuid.New()); err == nil {
 		t.Fatal("expected duplicate partner access to be rejected")
 	}
+
+	// The cross-partner listing must carry the owning partner for each account.
+	all, err := svc.ListAllPartnerAccounts()
+	if err != nil {
+		t.Fatalf("list all partner accounts: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("cross-partner account count = %d, want 2", len(all))
+	}
+	for _, account := range all {
+		if account.PartnerID != result.Partner.ID || account.PartnerName == "" || account.PartnerCode != "MITRA7" {
+			t.Fatalf("cross-partner account missing partner info: %+v", account)
+		}
+		if account.TemporaryPassword != "" {
+			t.Fatal("listing must never expose a password")
+		}
+	}
 }
 
 // TestPartnerAccountValidationRejectsBadInput verifies account validation and

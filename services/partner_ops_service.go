@@ -71,7 +71,9 @@ func (s *partnerService) createPartnerAccount(partner models.Partner, in dto.Par
 	}
 
 	result := &PartnerAccountResult{
-		MemberID: member.ID, UserID: user.ID, Name: user.Name, Email: user.Email,
+		MemberID: member.ID, UserID: user.ID,
+		PartnerID: partner.ID, PartnerName: partner.Name, PartnerCode: partner.Code,
+		Name: user.Name, Email: user.Email,
 		Phone: user.Phone, Role: role, Status: member.Status, IsActive: user.IsActive,
 		TemporaryPassword: generatedPassword,
 	}
@@ -152,13 +154,31 @@ func (s *partnerService) ListPartnerAccounts(partnerID uuid.UUID) ([]PartnerAcco
 	}
 	rows := make([]PartnerAccountResult, 0, len(members))
 	for i := range members {
-		member := members[i]
-		rows = append(rows, PartnerAccountResult{
-			MemberID: member.ID, UserID: member.UserID, Name: member.User.Name, Email: member.User.Email,
-			Phone: member.User.Phone, Role: member.Role, Status: member.Status, IsActive: member.User.IsActive,
-		})
+		rows = append(rows, partnerAccountResult(members[i]))
 	}
 	return rows, nil
+}
+
+// ListAllPartnerAccounts backs the cross-partner portal account page.
+func (s *partnerService) ListAllPartnerAccounts() ([]PartnerAccountResult, error) {
+	members, err := s.repo.ListAllMembers()
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]PartnerAccountResult, 0, len(members))
+	for i := range members {
+		rows = append(rows, partnerAccountResult(members[i]))
+	}
+	return rows, nil
+}
+
+func partnerAccountResult(member models.PartnerMember) PartnerAccountResult {
+	return PartnerAccountResult{
+		MemberID: member.ID, UserID: member.UserID,
+		PartnerID: member.PartnerID, PartnerName: member.Partner.Name, PartnerCode: member.Partner.Code,
+		Name: member.User.Name, Email: member.User.Email, Phone: member.User.Phone,
+		Role: member.Role, Status: member.Status, IsActive: member.User.IsActive,
+	}
 }
 
 // ── Bandwidth usage ────────────────────────────────────────────────────────
@@ -233,7 +253,33 @@ func (s *partnerService) ReviewUsage(id uuid.UUID, in dto.PartnerBandwidthUsageA
 }
 
 func (s *partnerService) ListUsages(partnerID *uuid.UUID, serviceID *uuid.UUID, status string) ([]models.PartnerBandwidthUsage, error) {
-	return s.repo.ListUsages(partnerID, serviceID, status)
+	rows, err := s.repo.ListUsages(partnerID, serviceID, status)
+	if err != nil {
+		return nil, err
+	}
+	if partnerID == nil {
+		labels := s.partnerLabels()
+		for i := range rows {
+			if partner, ok := labels[rows[i].PartnerID]; ok {
+				rows[i].PartnerName = partner.Name
+				rows[i].PartnerCode = partner.Code
+			}
+		}
+	}
+	return rows, nil
+}
+
+// partnerLabels indexes partner name/code by id for cross-partner listings.
+func (s *partnerService) partnerLabels() map[uuid.UUID]models.Partner {
+	labels := map[uuid.UUID]models.Partner{}
+	partners, err := s.repo.ListPartners()
+	if err != nil {
+		return labels
+	}
+	for i := range partners {
+		labels[partners[i].ID] = partners[i]
+	}
+	return labels
 }
 
 func periodLabel(year, month int) string {
@@ -391,7 +437,20 @@ func (s *partnerService) CreateAllocation(partnerID uuid.UUID, in dto.PartnerAll
 }
 
 func (s *partnerService) ListAllocations(partnerID *uuid.UUID, status, transactionType string) ([]models.PartnerInventoryAllocation, error) {
-	return s.repo.ListAllocations(partnerID, status, transactionType)
+	rows, err := s.repo.ListAllocations(partnerID, status, transactionType)
+	if err != nil {
+		return nil, err
+	}
+	if partnerID == nil {
+		labels := s.partnerLabels()
+		for i := range rows {
+			if partner, ok := labels[rows[i].PartnerID]; ok {
+				rows[i].PartnerName = partner.Name
+				rows[i].PartnerCode = partner.Code
+			}
+		}
+	}
+	return rows, nil
 }
 
 func (s *partnerService) ReturnAllocation(id uuid.UUID, in dto.PartnerAllocationReturnRequest, actorID uuid.UUID) (*models.PartnerInventoryAllocation, error) {

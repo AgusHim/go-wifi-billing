@@ -29,6 +29,13 @@ func (r *partnerRepository) ListMembers(partnerID uuid.UUID) ([]models.PartnerMe
 	return rows, err
 }
 
+// ListAllMembers backs the cross-partner portal account list.
+func (r *partnerRepository) ListAllMembers() ([]models.PartnerMember, error) {
+	var rows []models.PartnerMember
+	err := r.db.Preload("User").Preload("Partner").Order("created_at DESC").Find(&rows).Error
+	return rows, err
+}
+
 func (r *partnerRepository) FindMemberByPartnerAndUser(partnerID, userID uuid.UUID) (*models.PartnerMember, error) {
 	var row models.PartnerMember
 	err := r.db.Where("partner_id = ? AND user_id = ?", partnerID, userID).First(&row).Error
@@ -180,7 +187,7 @@ func (r *partnerRepository) ListStatusHistory(invoiceID uuid.UUID) ([]models.Par
 
 func (r *partnerRepository) ListInvoicesFiltered(partnerID *uuid.UUID, status string, overdueOnly bool) ([]models.PartnerInvoice, error) {
 	var rows []models.PartnerInvoice
-	query := r.db.Preload("Lines").Preload("Payments")
+	query := r.db.Preload("Partner").Preload("Lines").Preload("Payments")
 	if partnerID != nil {
 		query = query.Where("partner_id = ?", *partnerID)
 	}

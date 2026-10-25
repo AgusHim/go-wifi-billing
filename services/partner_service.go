@@ -21,6 +21,7 @@ type PartnerService interface {
 	UpdatePartner(uuid.UUID, dto.PartnerRequest) (*models.Partner, error)
 	CreatePartnerAccount(uuid.UUID, dto.PartnerAccountRequest, uuid.UUID) (*PartnerAccountResult, error)
 	ListPartnerAccounts(uuid.UUID) ([]PartnerAccountResult, error)
+	ListAllPartnerAccounts() ([]PartnerAccountResult, error)
 	AddMember(uuid.UUID, dto.PartnerMemberRequest) (*models.PartnerMember, error)
 	CreateBandwidthService(uuid.UUID, dto.PartnerBandwidthServiceRequest) (*models.PartnerBandwidthService, error)
 	UpdateBandwidthService(uuid.UUID, dto.PartnerBandwidthServiceRequest) (*models.PartnerBandwidthService, error)
@@ -88,6 +89,9 @@ type PartnerCreateResult struct {
 type PartnerAccountResult struct {
 	MemberID          uuid.UUID `json:"member_id"`
 	UserID            uuid.UUID `json:"user_id"`
+	PartnerID         uuid.UUID `json:"partner_id"`
+	PartnerName       string    `json:"partner_name"`
+	PartnerCode       string    `json:"partner_code"`
 	Name              string    `json:"name"`
 	Email             string    `json:"email"`
 	Phone             string    `json:"phone"`

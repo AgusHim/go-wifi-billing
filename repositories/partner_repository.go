@@ -16,6 +16,7 @@ type PartnerRepository interface {
 	DeletePartner(uuid.UUID) error
 	CreateMember(*models.PartnerMember) error
 	ListMembers(partnerID uuid.UUID) ([]models.PartnerMember, error)
+	ListAllMembers() ([]models.PartnerMember, error)
 	FindMemberByPartnerAndUser(partnerID, userID uuid.UUID) (*models.PartnerMember, error)
 	CountMembers(partnerID uuid.UUID) (int64, error)
 	FindPartnerByUser(userID uuid.UUID) (*models.Partner, error)
