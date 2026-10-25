@@ -12,6 +12,8 @@ import (
 
 type BrevoService interface {
 	SendInvoice(to, number string, total, balance int) (string, string)
+	SendReminder(to, number string, total, balance int, dueDate string) (string, string)
+	Send(to, subject, html string) (string, string)
 }
 type brevoService struct {
 	apiKey, senderEmail, senderName string
@@ -21,11 +23,26 @@ type brevoService struct {
 func NewBrevoService() BrevoService {
 	return &brevoService{apiKey: strings.TrimSpace(os.Getenv("BREVO_API_KEY")), senderEmail: strings.TrimSpace(os.Getenv("BREVO_SENDER_EMAIL")), senderName: strings.TrimSpace(os.Getenv("BREVO_SENDER_NAME")), client: &http.Client{Timeout: 10 * time.Second}}
 }
+
+// Configured reports whether Brevo credentials are present, so callers can
+// record a meaningful notification status instead of a generic failure.
+func (s *brevoService) Configured() bool { return s.apiKey != "" && s.senderEmail != "" }
+
 func (s *brevoService) SendInvoice(to, number string, total, balance int) (string, string) {
+	html := fmt.Sprintf("<p>Invoice <strong>%s</strong> telah diterbitkan oleh Cantika.net.</p><p>Total: Rp %d<br/>Sisa tagihan: Rp %d</p>", number, total, balance)
+	return s.Send(to, "Invoice "+number, html)
+}
+
+func (s *brevoService) SendReminder(to, number string, total, balance int, dueDate string) (string, string) {
+	html := fmt.Sprintf("<p>Pengingat pembayaran invoice <strong>%s</strong>.</p><p>Jatuh tempo: %s<br/>Total: Rp %d<br/>Sisa tagihan: Rp %d</p>", number, dueDate, total, balance)
+	return s.Send(to, "Pengingat Invoice "+number, html)
+}
+
+func (s *brevoService) Send(to, subject, html string) (string, string) {
 	if s.apiKey == "" || s.senderEmail == "" {
 		return "", "Brevo is not configured"
 	}
-	payload := map[string]interface{}{"sender": map[string]string{"email": s.senderEmail, "name": s.senderName}, "to": []map[string]string{{"email": to}}, "subject": "Invoice " + number, "htmlContent": fmt.Sprintf("<p>Invoice <strong>%s</strong> telah diterbitkan oleh Cantika.net.</p><p>Total: Rp %d<br/>Sisa tagihan: Rp %d</p>", number, total, balance)}
+	payload := map[string]interface{}{"sender": map[string]string{"email": s.senderEmail, "name": s.senderName}, "to": []map[string]string{{"email": to}}, "subject": subject, "htmlContent": html}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequest(http.MethodPost, "https://api.brevo.com/v3/smtp/email", bytes.NewReader(body))
 	if err != nil {

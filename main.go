@@ -162,8 +162,9 @@ func main() {
 	inventoryCtrl := controllers.NewInventoryController(inventorySvc)
 
 	partnerRepo := repositories.NewPartnerRepository(gormDB)
-	partnerSvc := services.NewPartnerService(partnerRepo, gormDB, services.NewBrevoService())
+	partnerSvc := services.NewPartnerService(partnerRepo, inventoryRepo, gormDB, services.NewBrevoService())
 	partnerCtrl := controllers.NewPartnerController(partnerSvc)
+	partnerSvc.StartScheduler()
 
 	// Setup Fiber
 	app := fiber.New()

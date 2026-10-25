@@ -86,6 +86,10 @@ Saat menambah domain baru (contoh: `invoice`), ikuti urutan:
 - `WHATSAPP_BOT_URL`: endpoint WhatsApp service.
 - `WHATSAPP_API_KEY`: API key untuk header `X-API-KEY` ke WhatsApp service.
 - `MIKROTIK_SECRET_KEY`: secret untuk enkripsi credential router MikroTik.
+- `BREVO_API_KEY`: API key Brevo untuk email invoice dan pengingat mitra B2B.
+- `BREVO_SENDER_EMAIL`: alamat pengirim terverifikasi di Brevo.
+- `BREVO_SENDER_NAME`: nama pengirim pada email Brevo.
+- `BREVO_WEBHOOK_SECRET`: shared secret untuk memverifikasi webhook event Brevo pada header `X-Brevo-Secret`.
 - `FEATURE_PROVISIONING_ENABLED`: aktifkan proses async provisioning manual ke MikroTik.
 - `FEATURE_BILLING_PROVISIONING_ENABLED`: aktifkan otomasi billing ke provisioning seperti `payment confirmed -> unsuspend/create` dan `bill overdue -> suspend`.
 - `FEATURE_RENEWAL_AUTOGEN_ENABLED`: aktifkan scheduler renewal invoice otomatis untuk subscription `auto_generate_invoice`.

@@ -107,9 +107,13 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Partner{},
 		&models.PartnerMember{},
 		&models.PartnerBandwidthService{},
+		&models.PartnerBandwidthUsage{},
+		&models.PartnerInventoryAllocation{},
 		&models.PartnerInvoice{},
 		&models.PartnerInvoiceLine{},
+		&models.PartnerInvoiceStatusHistory{},
 		&models.PartnerPayment{},
 		&models.PartnerInvoiceNotification{},
+		&models.LegalDocument{},
 	)
 }

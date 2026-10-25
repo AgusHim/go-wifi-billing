@@ -169,6 +169,13 @@ var permissionCatalog = []permissionSeed{
 	{Key: "partners.invoices.read", Name: "Lihat invoice mitra", RiskLevel: "low"},
 	{Key: "partners.invoices.manage", Name: "Kelola invoice mitra", RiskLevel: "high"},
 	{Key: "partners.payments.verify", Name: "Verifikasi pembayaran mitra", RiskLevel: "high"},
+	{Key: "partners.usages.read", Name: "Lihat pemakaian bandwidth mitra", RiskLevel: "low"},
+	{Key: "partners.usages.manage", Name: "Catat dan setujui pemakaian bandwidth mitra", RiskLevel: "high"},
+	{Key: "partners.allocations.read", Name: "Lihat alokasi barang mitra", RiskLevel: "low"},
+	{Key: "partners.allocations.manage", Name: "Kelola alokasi barang mitra", RiskLevel: "high"},
+	{Key: "partners.receivables.read", Name: "Lihat laporan piutang mitra", RiskLevel: "medium"},
+	{Key: "partners.documents.read", Name: "Lihat dokumen legalitas", RiskLevel: "low"},
+	{Key: "partners.documents.manage", Name: "Kelola dokumen legalitas", RiskLevel: "high"},
 	{Key: "self.partner.read", Name: "Lihat portal mitra sendiri", RiskLevel: "low"},
 	{Key: "self.partner.payments.create", Name: "Ajukan pembayaran mitra", RiskLevel: "medium"},
 }
@@ -188,6 +195,7 @@ var defaultRolePermissions = map[string][]string{
 		"users.read", "users.create", "users.update", "settings.read", "whatsapp.read", "whatsapp.send", "whatsapp_templates.manage",
 		"inventory.read", "inventory.manage_master", "inventory.purchase", "inventory.receive", "inventory.transfer", "inventory.use_material", "inventory.stock_opname", "inventory.approve", "inventory.accounting.read",
 		"partners.read", "partners.manage", "partners.invoices.read", "partners.invoices.manage", "partners.payments.verify",
+		"partners.usages.read", "partners.usages.manage", "partners.allocations.read", "partners.allocations.manage", "partners.receivables.read", "partners.documents.read", "partners.documents.manage",
 	},
 	"petugas": {
 		"dashboard.read", "bills.read", "bills.create", "bills.update", "payments.read", "payments.create", "payments.update",
@@ -195,12 +203,14 @@ var defaultRolePermissions = map[string][]string{
 		"complaints.read", "complaints.create", "complaints.update", "packages.read", "coverages.read", "odcs.read", "odps.read",
 		"noc.read", "routers.read", "network_plans.read", "service_accounts.read", "inventory.read", "inventory.transfer", "inventory.use_material",
 		"partners.read", "partners.invoices.read", "partners.payments.verify",
+		"partners.usages.read", "partners.allocations.read",
 	},
 	"loket": {
 		"dashboard.read", "bills.read", "bills.create", "bills.update", "payments.read", "payments.create", "payments.update",
 		"customers.read", "customers.create", "customers.update", "subscriptions.read", "subscriptions.create", "subscriptions.update",
 		"complaints.read", "complaints.create", "complaints.update", "packages.read", "coverages.read", "odcs.read", "odps.read", "inventory.read",
 		"partners.read", "partners.invoices.read", "partners.invoices.manage", "partners.payments.verify",
+		"partners.usages.read", "partners.usages.manage", "partners.allocations.read", "partners.allocations.manage", "partners.receivables.read", "partners.documents.read",
 	},
 	"teknisi": {
 		"dashboard.read", "customers.read", "customers.update", "subscriptions.read", "complaints.read", "complaints.update",

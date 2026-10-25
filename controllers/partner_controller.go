@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"crypto/subtle"
 	"errors"
+	"os"
 	"strings"
 
 	"github.com/Agushim/go_wifi_billing/dto"
@@ -22,20 +24,52 @@ func (c *PartnerController) RegisterRoutes(router fiber.Router) {
 	admin := router.Group("/admin_api/partners", middlewares.UserProtected())
 	admin.Get("/", c.ListPartners)
 	admin.Post("/", c.CreatePartner)
+	admin.Get("/aging", c.AgingReport)
+	admin.Post("/reminders/send", c.SendReminders)
+	admin.Post("/invoices/mark-overdue", c.MarkOverdueInvoices)
+	admin.Post("/invoices/generate-recurring", c.GenerateRecurringDrafts)
+	admin.Get("/legal-documents", c.ListLegalDocuments)
+	admin.Post("/legal-documents", c.CreateLegalDocument)
+	admin.Put("/legal-documents/:id", c.UpdateLegalDocument)
+	admin.Delete("/legal-documents/:id", c.DeleteLegalDocument)
+	admin.Get("/invoices", c.ListInvoices)
+	admin.Post("/invoices", c.CreateInvoice)
+	admin.Post("/invoices/from-service", c.GenerateInvoiceFromService)
+	admin.Get("/invoices/:id", c.GetInvoice)
+	admin.Post("/invoices/:id/issue", c.IssueInvoice)
+	admin.Post("/invoices/:id/void", c.VoidInvoice)
+	admin.Get("/invoices/:id/history", c.InvoiceHistory)
+	admin.Get("/invoices/:id/notifications", c.InvoiceNotifications)
+	admin.Post("/invoices/:id/resend", c.ResendInvoiceNotification)
+	admin.Post("/usages/:id/review", c.ReviewUsage)
+	admin.Post("/allocations/:id/return", c.ReturnAllocation)
+	admin.Post("/payments/:id/review", c.ReviewPayment)
+	admin.Put("/services/:id", c.UpdateService)
+	admin.Get("/:id", c.GetPartner)
+	admin.Put("/:id", c.UpdatePartner)
 	admin.Post("/:id/members", c.AddMember)
 	admin.Get("/:id/services", c.ListServices)
 	admin.Post("/:id/services", c.CreateService)
-	admin.Get("/invoices", c.ListInvoices)
-	admin.Post("/invoices", c.CreateInvoice)
-	admin.Get("/invoices/:id", c.GetInvoice)
-	admin.Post("/invoices/:id/issue", c.IssueInvoice)
-	admin.Post("/payments/:id/review", c.ReviewPayment)
+	admin.Get("/:id/usages", c.ListUsages)
+	admin.Post("/:id/usages", c.CreateUsage)
+	admin.Get("/:id/allocations", c.ListAllocations)
+	admin.Post("/:id/allocations", c.CreateAllocation)
+
 	portal := router.Group("/partner_api", middlewares.UserProtected())
 	portal.Get("/me", c.GetMyPartner)
 	portal.Get("/services", c.GetMyServices)
+	portal.Get("/usages", c.GetMyUsages)
+	portal.Get("/allocations", c.GetMyAllocations)
+	portal.Get("/documents", c.GetMyDocuments)
+	portal.Get("/documents/:id", c.GetMyDocument)
+	portal.Get("/aging", c.GetMyAging)
 	portal.Get("/invoices", c.ListMyInvoices)
 	portal.Get("/invoices/:id", c.GetMyInvoice)
+	portal.Get("/invoices/:id/history", c.GetMyInvoiceHistory)
 	portal.Post("/invoices/:id/payments", c.SubmitMyPayment)
+
+	// Brevo transactional webhooks. The handler verifies a shared secret header.
+	router.Post("/api/webhooks/brevo", c.BrevoWebhook)
 }
 func parseID(ctx *fiber.Ctx, key string) (uuid.UUID, error) {
 	id, err := uuid.Parse(ctx.Params(key))
@@ -55,6 +89,38 @@ func (c *PartnerController) CreatePartner(ctx *fiber.Ctx) error {
 	}
 	row, err := c.service.CreatePartner(in)
 	return respond(ctx, row, err, "Partner created")
+}
+func (c *PartnerController) GetPartner(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.GetPartner(id)
+	return respond(ctx, row, err, "Success get partner")
+}
+func (c *PartnerController) UpdatePartner(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	var in dto.PartnerRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.UpdatePartner(id, in)
+	return respond(ctx, row, err, "Partner updated")
+}
+func (c *PartnerController) UpdateService(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	var in dto.PartnerBandwidthServiceRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.UpdateBandwidthService(id, in)
+	return respond(ctx, row, err, "Partner service updated")
 }
 func (c *PartnerController) AddMember(ctx *fiber.Ctx) error {
 	id, err := parseID(ctx, "id")
@@ -89,7 +155,16 @@ func (c *PartnerController) CreateService(ctx *fiber.Ctx) error {
 	return respond(ctx, row, err, "Partner service created")
 }
 func (c *PartnerController) ListInvoices(ctx *fiber.Ctx) error {
-	rows, err := c.service.ListInvoices(nil)
+	var partnerID *uuid.UUID
+	if raw := strings.TrimSpace(ctx.Query("partner_id")); raw != "" {
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			return badRequest(ctx, errors.New("invalid partner_id"))
+		}
+		partnerID = &parsed
+	}
+	overdueOnly := strings.TrimSpace(ctx.Query("overdue")) == "true"
+	rows, err := c.service.ListInvoicesFiltered(partnerID, strings.TrimSpace(ctx.Query("status")), overdueOnly)
 	return respond(ctx, rows, err, "Success get partner invoices")
 }
 func (c *PartnerController) CreateInvoice(ctx *fiber.Ctx) error {
@@ -117,8 +192,203 @@ func (c *PartnerController) IssueInvoice(ctx *fiber.Ctx) error {
 	if err != nil {
 		return badRequest(ctx, err)
 	}
-	row, err := c.service.IssueInvoice(id)
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	row, err := c.service.IssueInvoice(id, actor)
 	return respond(ctx, row, err, "Partner invoice issued")
+}
+func (c *PartnerController) GenerateInvoiceFromService(ctx *fiber.Ctx) error {
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	var in dto.PartnerInvoiceFromServiceRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	partnerID, err := uuid.Parse(strings.TrimSpace(in.PartnerID))
+	if err != nil {
+		return badRequest(ctx, errors.New("invalid partner_id"))
+	}
+	row, err := c.service.GenerateInvoiceForService(partnerID, in, actor)
+	return respond(ctx, row, err, "Draft invoice generated")
+}
+func (c *PartnerController) VoidInvoice(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.VoidInvoice(id, in.Reason, actor)
+	return respond(ctx, row, err, "Partner invoice voided")
+}
+func (c *PartnerController) InvoiceHistory(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	rows, err := c.service.ListInvoiceHistory(id)
+	return respond(ctx, rows, err, "Success get invoice history")
+}
+func (c *PartnerController) InvoiceNotifications(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	rows, err := c.service.ListInvoiceNotifications(id)
+	return respond(ctx, rows, err, "Success get invoice notifications")
+}
+func (c *PartnerController) ResendInvoiceNotification(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	actor, _ := authenticatedUserID(ctx)
+	row, err := c.service.ResendInvoiceNotification(id, actor)
+	return respond(ctx, row, err, "Invoice notification queued")
+}
+func (c *PartnerController) ReviewUsage(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	var in dto.PartnerBandwidthUsageApprovalRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.ReviewUsage(id, in, actor)
+	return respond(ctx, row, err, "Usage reviewed")
+}
+func (c *PartnerController) CreateUsage(ctx *fiber.Ctx) error {
+	partnerID, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	var in dto.PartnerBandwidthUsageRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.RecordUsage(partnerID, in, actor)
+	return respond(ctx, row, err, "Usage recorded")
+}
+func (c *PartnerController) ListUsages(ctx *fiber.Ctx) error {
+	partnerID, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	rows, err := c.service.ListUsages(&partnerID, nil, strings.TrimSpace(ctx.Query("status")))
+	return respond(ctx, rows, err, "Success get usages")
+}
+func (c *PartnerController) CreateAllocation(ctx *fiber.Ctx) error {
+	partnerID, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	var in dto.PartnerAllocationRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.CreateAllocation(partnerID, in, actor)
+	return respond(ctx, row, err, "Inventory allocated")
+}
+func (c *PartnerController) ListAllocations(ctx *fiber.Ctx) error {
+	partnerID, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	rows, err := c.service.ListAllocations(&partnerID, strings.TrimSpace(ctx.Query("status")), strings.TrimSpace(ctx.Query("transaction_type")))
+	return respond(ctx, rows, err, "Success get allocations")
+}
+func (c *PartnerController) ReturnAllocation(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	var in dto.PartnerAllocationReturnRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.ReturnAllocation(id, in, actor)
+	return respond(ctx, row, err, "Allocation returned")
+}
+func (c *PartnerController) AgingReport(ctx *fiber.Ctx) error {
+	rows, err := c.service.AgingReport(nil)
+	return respond(ctx, rows, err, "Success get aging report")
+}
+func (c *PartnerController) SendReminders(ctx *fiber.Ctx) error {
+	count, err := c.service.SendDueReminders()
+	return respond(ctx, fiber.Map{"sent": count}, err, "Reminders processed")
+}
+func (c *PartnerController) MarkOverdueInvoices(ctx *fiber.Ctx) error {
+	count, err := c.service.MarkOverdueInvoices()
+	return respond(ctx, fiber.Map{"updated": count}, err, "Overdue invoices marked")
+}
+func (c *PartnerController) GenerateRecurringDrafts(ctx *fiber.Ctx) error {
+	count, err := c.service.GenerateRecurringDrafts()
+	return respond(ctx, fiber.Map{"created": count}, err, "Recurring drafts generated")
+}
+func (c *PartnerController) ListLegalDocuments(ctx *fiber.Ctx) error {
+	rows, err := c.service.ListLegalDocuments(nil, strings.TrimSpace(ctx.Query("category")))
+	return respond(ctx, rows, err, "Success get legal documents")
+}
+func (c *PartnerController) CreateLegalDocument(ctx *fiber.Ctx) error {
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	var in dto.LegalDocumentRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.CreateLegalDocument(in, actor)
+	return respond(ctx, row, err, "Legal document created")
+}
+func (c *PartnerController) UpdateLegalDocument(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	var in dto.LegalDocumentRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.UpdateLegalDocument(id, in)
+	return respond(ctx, row, err, "Legal document updated")
+}
+func (c *PartnerController) DeleteLegalDocument(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	err = c.service.DeleteLegalDocument(id)
+	return respond(ctx, fiber.Map{"deleted": err == nil}, err, "Legal document deleted")
 }
 func (c *PartnerController) ReviewPayment(ctx *fiber.Ctx) error {
 	id, err := parseID(ctx, "id")
@@ -188,6 +458,85 @@ func (c *PartnerController) SubmitMyPayment(ctx *fiber.Ctx) error {
 	row, err := c.service.SubmitPayment(id, in, userID)
 	return respond(ctx, row, err, "Payment submitted for verification")
 }
+func (c *PartnerController) GetMyUsages(ctx *fiber.Ctx) error {
+	partner, err := c.portalPartner(ctx)
+	if err != nil {
+		return respond(ctx, nil, err, "")
+	}
+	rows, err := c.service.ListUsages(&partner.ID, nil, "")
+	return respond(ctx, rows, err, "Success get usages")
+}
+func (c *PartnerController) GetMyAllocations(ctx *fiber.Ctx) error {
+	partner, err := c.portalPartner(ctx)
+	if err != nil {
+		return respond(ctx, nil, err, "")
+	}
+	rows, err := c.service.ListAllocations(&partner.ID, "", "")
+	return respond(ctx, rows, err, "Success get allocations")
+}
+func (c *PartnerController) GetMyDocuments(ctx *fiber.Ctx) error {
+	if _, err := c.portalPartner(ctx); err != nil {
+		return respond(ctx, nil, err, "")
+	}
+	visible := true
+	rows, err := c.service.ListLegalDocuments(&visible, "")
+	return respond(ctx, rows, err, "Success get documents")
+}
+func (c *PartnerController) GetMyDocument(ctx *fiber.Ctx) error {
+	partner, err := c.portalPartner(ctx)
+	if err != nil {
+		return respond(ctx, nil, err, "")
+	}
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.GetLegalDocument(id, &partner.ID)
+	return respond(ctx, row, err, "Success get document")
+}
+func (c *PartnerController) GetMyAging(ctx *fiber.Ctx) error {
+	partner, err := c.portalPartner(ctx)
+	if err != nil {
+		return respond(ctx, nil, err, "")
+	}
+	rows, err := c.service.AgingReport(&partner.ID)
+	return respond(ctx, rows, err, "Success get aging report")
+}
+func (c *PartnerController) GetMyInvoiceHistory(ctx *fiber.Ctx) error {
+	partner, err := c.portalPartner(ctx)
+	if err != nil {
+		return respond(ctx, nil, err, "")
+	}
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	if _, err := c.service.GetInvoice(id, &partner.ID); err != nil {
+		return respond(ctx, nil, err, "")
+	}
+	rows, err := c.service.ListInvoiceHistory(id)
+	return respond(ctx, rows, err, "Success get invoice history")
+}
+
+// BrevoWebhook verifies a shared secret before recording a transactional event.
+func (c *PartnerController) BrevoWebhook(ctx *fiber.Ctx) error {
+	secret := strings.TrimSpace(os.Getenv("BREVO_WEBHOOK_SECRET"))
+	if secret == "" {
+		return ctx.Status(503).JSON(fiber.Map{"success": false, "message": "webhook not configured"})
+	}
+	if subtle.ConstantTimeCompare([]byte(ctx.Get("X-Brevo-Secret")), []byte(secret)) != 1 {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "invalid webhook secret"})
+	}
+	var in dto.BrevoWebhookEvent
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	if err := c.service.RecordBrevoEvent(in); err != nil {
+		return respond(ctx, nil, err, "")
+	}
+	return ctx.JSON(fiber.Map{"success": true, "message": "event recorded"})
+}
+
 func (c *PartnerController) portalPartner(ctx *fiber.Ctx) (*models.Partner, error) {
 	userID, ok := authenticatedUserID(ctx)
 	if !ok {

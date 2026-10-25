@@ -16,13 +16,54 @@ type PartnerRepository interface {
 	FindPartnerByUser(userID uuid.UUID) (*models.Partner, error)
 	ListServices(partnerID uuid.UUID) ([]models.PartnerBandwidthService, error)
 	CreateService(*models.PartnerBandwidthService) error
+	FindService(id uuid.UUID) (*models.PartnerBandwidthService, error)
+	SaveService(*models.PartnerBandwidthService) error
+	ListServicesDueForBilling() ([]models.PartnerBandwidthService, error)
 	CreateInvoice(*models.PartnerInvoice) error
 	FindInvoice(id uuid.UUID) (*models.PartnerInvoice, error)
 	ListInvoices(partnerID *uuid.UUID) ([]models.PartnerInvoice, error)
+	ListInvoicesFiltered(partnerID *uuid.UUID, status string, overdueOnly bool) ([]models.PartnerInvoice, error)
+	ListInvoicesDueForReminder() ([]models.PartnerInvoice, error)
+	ListOverdueInvoices() ([]models.PartnerInvoice, error)
 	SaveInvoice(*models.PartnerInvoice) error
 	CreatePayment(*models.PartnerPayment) error
 	FindPayment(id uuid.UUID) (*models.PartnerPayment, error)
+	FindPaymentByIdempotencyKey(key string) (*models.PartnerPayment, error)
 	SavePayment(*models.PartnerPayment) error
+
+	// Bandwidth usage
+	CreateUsage(*models.PartnerBandwidthUsage) error
+	SaveUsage(*models.PartnerBandwidthUsage) error
+	FindUsage(id uuid.UUID) (*models.PartnerBandwidthUsage, error)
+	FindUsageByPeriod(serviceID uuid.UUID, year, month int) (*models.PartnerBandwidthUsage, error)
+	ListUsages(partnerID *uuid.UUID, serviceID *uuid.UUID, status string) ([]models.PartnerBandwidthUsage, error)
+
+	// Inventory allocation (loan / sale)
+	CreateAllocationWithStock(*models.PartnerInventoryAllocation) error
+	FindAllocation(id uuid.UUID) (*models.PartnerInventoryAllocation, error)
+	ListAllocations(partnerID *uuid.UUID, status, transactionType string) ([]models.PartnerInventoryAllocation, error)
+	SaveAllocation(*models.PartnerInventoryAllocation) error
+	ReturnAllocation(allocation *models.PartnerInventoryAllocation, toLocationID uuid.UUID, notes string) error
+	LinkAllocationToInvoiceLine(allocationID, invoiceLineID uuid.UUID) error
+
+	// Invoice audit + source references
+	CreateStatusHistory(*models.PartnerInvoiceStatusHistory) error
+	ListStatusHistory(invoiceID uuid.UUID) ([]models.PartnerInvoiceStatusHistory, error)
+	FindInvoiceLineBySource(sourceRefType string, sourceRefID uuid.UUID, year, month *int) (*models.PartnerInvoiceLine, error)
+
+	// Notifications (Brevo)
+	CreateNotification(*models.PartnerInvoiceNotification) error
+	SaveNotification(*models.PartnerInvoiceNotification) error
+	FindNotificationByIdempotencyKey(key string) (*models.PartnerInvoiceNotification, error)
+	FindNotificationByMessageID(messageID string) (*models.PartnerInvoiceNotification, error)
+	ListNotifications(invoiceID uuid.UUID) ([]models.PartnerInvoiceNotification, error)
+
+	// Legal documents
+	CreateDocument(*models.LegalDocument) error
+	SaveDocument(*models.LegalDocument) error
+	FindDocument(id uuid.UUID) (*models.LegalDocument, error)
+	ListDocuments(partnerVisible *bool, category string) ([]models.LegalDocument, error)
+	DeleteDocument(id uuid.UUID) error
 }
 
 type partnerRepository struct{ db *gorm.DB }
@@ -66,7 +107,7 @@ func (r *partnerRepository) CreateInvoice(row *models.PartnerInvoice) error {
 }
 func (r *partnerRepository) FindInvoice(id uuid.UUID) (*models.PartnerInvoice, error) {
 	var row models.PartnerInvoice
-	err := r.db.Preload("Partner").Preload("Lines").Preload("Payments").First(&row, "id = ?", id).Error
+	err := r.db.Preload("Partner").Preload("Lines").Preload("Payments").Preload("StatusHistory").First(&row, "id = ?", id).Error
 	return &row, err
 }
 func (r *partnerRepository) ListInvoices(partnerID *uuid.UUID) ([]models.PartnerInvoice, error) {
