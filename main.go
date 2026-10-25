@@ -162,7 +162,7 @@ func main() {
 	inventoryCtrl := controllers.NewInventoryController(inventorySvc)
 
 	partnerRepo := repositories.NewPartnerRepository(gormDB)
-	partnerSvc := services.NewPartnerService(partnerRepo, inventoryRepo, gormDB, services.NewBrevoService())
+	partnerSvc := services.NewPartnerService(partnerRepo, inventoryRepo, userRepo, gormDB, services.NewBrevoService())
 	partnerCtrl := controllers.NewPartnerController(partnerSvc)
 	partnerSvc.StartScheduler()
 

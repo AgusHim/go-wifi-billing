@@ -11,6 +11,36 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// ── Partner members (portal login accounts) ────────────────────────────────
+
+func (r *partnerRepository) DeletePartner(id uuid.UUID) error {
+	return r.db.Delete(&models.Partner{}, "id = ?", id).Error
+}
+
+func (r *partnerRepository) FindPartnerByCode(code string) (*models.Partner, error) {
+	var row models.Partner
+	err := r.db.Where("code = ?", code).First(&row).Error
+	return &row, err
+}
+
+func (r *partnerRepository) ListMembers(partnerID uuid.UUID) ([]models.PartnerMember, error) {
+	var rows []models.PartnerMember
+	err := r.db.Preload("User").Where("partner_id = ?", partnerID).Order("created_at").Find(&rows).Error
+	return rows, err
+}
+
+func (r *partnerRepository) FindMemberByPartnerAndUser(partnerID, userID uuid.UUID) (*models.PartnerMember, error) {
+	var row models.PartnerMember
+	err := r.db.Where("partner_id = ? AND user_id = ?", partnerID, userID).First(&row).Error
+	return &row, err
+}
+
+func (r *partnerRepository) CountMembers(partnerID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.PartnerMember{}).Where("partner_id = ?", partnerID).Count(&count).Error
+	return count, err
+}
+
 // ── Bandwidth usage ────────────────────────────────────────────────────────
 
 func (r *partnerRepository) CreateUsage(row *models.PartnerBandwidthUsage) error {

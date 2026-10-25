@@ -8,6 +8,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/repositories"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -31,21 +32,26 @@ func newPartnerTestService(t *testing.T) (PartnerService, *gorm.DB) {
 		&models.PartnerInvoice{}, &models.PartnerInvoiceLine{}, &models.PartnerInvoiceStatusHistory{},
 		&models.PartnerPayment{}, &models.PartnerInvoiceNotification{}, &models.LegalDocument{},
 		&models.InventoryItem{}, &models.InventoryLocation{}, &models.InventoryStock{},
-		&models.InventoryStockMovement{}, &models.InventorySerialItem{}, &models.User{},
+		&models.InventoryStockMovement{}, &models.InventorySerialItem{},
+		&models.User{}, &models.Role{},
 	); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
-	svc := NewPartnerService(repositories.NewPartnerRepository(db), repositories.NewInventoryRepository(db), db, nil)
+	// The portal login account uses the canonical `customer` role.
+	if err := db.Create(&models.Role{ID: uuid.New(), Key: "customer", Name: "Customer", IsActive: true}).Error; err != nil {
+		t.Fatalf("seed customer role: %v", err)
+	}
+	svc := NewPartnerService(repositories.NewPartnerRepository(db), repositories.NewInventoryRepository(db), repositories.NewUserRepository(db), db, nil)
 	return svc, db
 }
 
 func createTestPartner(t *testing.T, svc PartnerService, code string) *models.Partner {
 	t.Helper()
-	partner, err := svc.CreatePartner(dto.PartnerRequest{Code: code, Name: "Mitra " + code, BillingEmail: code + "@example.com"})
+	result, err := svc.CreatePartner(dto.PartnerRequest{Code: code, Name: "Mitra " + code, BillingEmail: code + "@example.com"})
 	if err != nil {
 		t.Fatalf("create partner %s: %v", code, err)
 	}
-	return partner
+	return result.Partner
 }
 
 func createTestService(t *testing.T, svc PartnerService, partnerID uuid.UUID, mode string, rate int) *models.PartnerBandwidthService {
@@ -335,5 +341,122 @@ func TestPartnerAgingReportBuckets(t *testing.T) {
 	}
 	if row.TotalDue != 1000000 || row.InvoiceCount != 4 {
 		t.Fatalf("aging totals = %d/%d, want 1000000/4", row.TotalDue, row.InvoiceCount)
+	}
+}
+
+// TestPartnerLoginAccountCreation verifies that creating a partner can also
+// create a working portal login account, and that the account is the one the
+// portal resolves for that user.
+func TestPartnerLoginAccountCreation(t *testing.T) {
+	svc, db := newPartnerTestService(t)
+
+	result, err := svc.CreatePartner(dto.PartnerRequest{
+		Code: "MITRA7", Name: "PT Mitra Tujuh", BillingEmail: "billing@mitra7.id",
+		Account: &dto.PartnerAccountRequest{Name: "Budi", Email: "budi@mitra7.id", Phone: "08120000000", Password: "rahasia123"},
+	})
+	if err != nil {
+		t.Fatalf("create partner with account: %v", err)
+	}
+	if result.Account == nil {
+		t.Fatal("expected a login account to be created")
+	}
+	if result.Account.Role != "owner" {
+		t.Fatalf("first account role = %q, want owner", result.Account.Role)
+	}
+	if result.Account.TemporaryPassword != "" {
+		t.Fatal("an explicit password must not be echoed back")
+	}
+
+	// The user must exist with the customer role and a verifiable password hash.
+	var user models.User
+	if err := db.Where("email = ?", "budi@mitra7.id").First(&user).Error; err != nil {
+		t.Fatalf("find portal user: %v", err)
+	}
+	if user.Role != "user" {
+		t.Fatalf("legacy role = %q, want user", user.Role)
+	}
+	if user.RoleID == nil {
+		t.Fatal("portal user has no canonical role assigned")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte("rahasia123")) != nil {
+		t.Fatal("stored password hash does not match the requested password")
+	}
+
+	// The portal resolves the partner from the member link.
+	partner, err := svc.PartnerForUser(user.ID)
+	if err != nil {
+		t.Fatalf("resolve partner for portal user: %v", err)
+	}
+	if partner.ID != result.Partner.ID {
+		t.Fatalf("portal partner = %s, want %s", partner.ID, result.Partner.ID)
+	}
+
+	accounts, err := svc.ListPartnerAccounts(result.Partner.ID)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("list accounts = %v (%d), want 1", err, len(accounts))
+	}
+	if accounts[0].Email != "budi@mitra7.id" || accounts[0].TemporaryPassword != "" {
+		t.Fatalf("listed account = %+v", accounts[0])
+	}
+
+	// A second account is added as a regular member and gets a temporary password.
+	second, err := svc.CreatePartnerAccount(result.Partner.ID, dto.PartnerAccountRequest{Name: "Sari", Email: "sari@mitra7.id"}, uuid.New())
+	if err != nil {
+		t.Fatalf("create second account: %v", err)
+	}
+	if second.Role != "member" {
+		t.Fatalf("second account role = %q, want member", second.Role)
+	}
+	if len(second.TemporaryPassword) < 6 {
+		t.Fatalf("expected a generated temporary password, got %q", second.TemporaryPassword)
+	}
+	var secondUser models.User
+	if err := db.Where("email = ?", "sari@mitra7.id").First(&secondUser).Error; err != nil {
+		t.Fatalf("find second portal user: %v", err)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(secondUser.Password), []byte(second.TemporaryPassword)) != nil {
+		t.Fatal("generated temporary password does not unlock the account")
+	}
+
+	// Duplicate access for the same email must be rejected.
+	if _, err := svc.CreatePartnerAccount(result.Partner.ID, dto.PartnerAccountRequest{Name: "Budi", Email: "budi@mitra7.id"}, uuid.New()); err == nil {
+		t.Fatal("expected duplicate partner access to be rejected")
+	}
+}
+
+// TestPartnerAccountValidationRejectsBadInput verifies account validation and
+// that a rejected account does not leave a partner behind.
+func TestPartnerAccountValidationRejectsBadInput(t *testing.T) {
+	svc, db := newPartnerTestService(t)
+
+	if _, err := svc.CreatePartner(dto.PartnerRequest{
+		Code: "MITRA8", Name: "PT Mitra Delapan", BillingEmail: "billing@mitra8.id",
+		Account: &dto.PartnerAccountRequest{Name: "Tanpa Email", Email: "bukan-email"},
+	}); err == nil {
+		t.Fatal("expected an invalid account email to be rejected")
+	}
+	var count int64
+	if err := db.Model(&models.Partner{}).Where("code = ?", "MITRA8").Count(&count).Error; err != nil {
+		t.Fatalf("count partners: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("rejected account left %d partner rows behind", count)
+	}
+
+	if _, err := svc.CreatePartner(dto.PartnerRequest{
+		Code: "MITRA9", Name: "PT Mitra Sembilan", BillingEmail: "billing@mitra9.id",
+		Account: &dto.PartnerAccountRequest{Name: "Budi", Email: "budi@mitra9.id", Password: "123"},
+	}); err == nil {
+		t.Fatal("expected a short password to be rejected")
+	}
+
+	partner := createTestPartner(t, svc, "MITRA10")
+	if _, err := svc.CreatePartnerAccount(partner.ID, dto.PartnerAccountRequest{Email: "x@y.id"}, uuid.New()); err == nil {
+		t.Fatal("expected a missing account name to be rejected")
+	}
+
+	// A duplicate partner code must be reported as an input problem.
+	if _, err := svc.CreatePartner(dto.PartnerRequest{Code: "mitra10", Name: "Duplikat", BillingEmail: "dup@mitra10.id"}); err == nil {
+		t.Fatal("expected a duplicate partner code to be rejected")
 	}
 }

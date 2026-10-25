@@ -11,6 +11,20 @@ type PartnerRequest struct {
 	Address      string `json:"address"`
 	TaxNumber    string `json:"tax_number"`
 	IsActive     *bool  `json:"is_active"`
+	// Account optionally creates a portal login account for the partner in the
+	// same request.
+	Account *PartnerAccountRequest `json:"account"`
+}
+
+// PartnerAccountRequest creates a login account that can access the partner
+// portal dashboard. When Password is empty a temporary password is generated
+// and returned once in the response.
+type PartnerAccountRequest struct {
+	Name       string `json:"name"`
+	Email      string `json:"email"`
+	Phone      string `json:"phone"`
+	Password   string `json:"password"`
+	SendInvite bool   `json:"send_invite"`
 }
 type PartnerMemberRequest struct {
 	UserID string `json:"user_id"`

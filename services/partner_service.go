@@ -17,8 +17,10 @@ import (
 type PartnerService interface {
 	ListPartners() ([]models.Partner, error)
 	GetPartner(uuid.UUID) (*models.Partner, error)
-	CreatePartner(dto.PartnerRequest) (*models.Partner, error)
+	CreatePartner(dto.PartnerRequest) (*PartnerCreateResult, error)
 	UpdatePartner(uuid.UUID, dto.PartnerRequest) (*models.Partner, error)
+	CreatePartnerAccount(uuid.UUID, dto.PartnerAccountRequest, uuid.UUID) (*PartnerAccountResult, error)
+	ListPartnerAccounts(uuid.UUID) ([]PartnerAccountResult, error)
 	AddMember(uuid.UUID, dto.PartnerMemberRequest) (*models.PartnerMember, error)
 	CreateBandwidthService(uuid.UUID, dto.PartnerBandwidthServiceRequest) (*models.PartnerBandwidthService, error)
 	UpdateBandwidthService(uuid.UUID, dto.PartnerBandwidthServiceRequest) (*models.PartnerBandwidthService, error)
@@ -74,15 +76,38 @@ type PartnerAgingRow struct {
 	InvoiceCount int       `json:"invoice_count"`
 }
 
+// PartnerCreateResult bundles a newly created partner with the optional portal
+// login account created in the same request.
+type PartnerCreateResult struct {
+	Partner *models.Partner       `json:"partner"`
+	Account *PartnerAccountResult `json:"account,omitempty"`
+}
+
+// PartnerAccountResult describes a partner portal login account. The temporary
+// password is only populated on creation when it was generated server-side.
+type PartnerAccountResult struct {
+	MemberID          uuid.UUID `json:"member_id"`
+	UserID            uuid.UUID `json:"user_id"`
+	Name              string    `json:"name"`
+	Email             string    `json:"email"`
+	Phone             string    `json:"phone"`
+	Role              string    `json:"role"`
+	Status            string    `json:"status"`
+	IsActive          bool      `json:"is_active"`
+	TemporaryPassword string    `json:"temporary_password,omitempty"`
+	InviteSent        bool      `json:"invite_sent"`
+}
+
 type partnerService struct {
 	repo          repositories.PartnerRepository
 	inventoryRepo repositories.InventoryRepository
+	userRepo      repositories.UserRepository
 	db            *gorm.DB
 	brevo         BrevoService
 }
 
-func NewPartnerService(repo repositories.PartnerRepository, inventoryRepo repositories.InventoryRepository, db *gorm.DB, brevo BrevoService) PartnerService {
-	return &partnerService{repo: repo, inventoryRepo: inventoryRepo, db: db, brevo: brevo}
+func NewPartnerService(repo repositories.PartnerRepository, inventoryRepo repositories.InventoryRepository, userRepo repositories.UserRepository, db *gorm.DB, brevo BrevoService) PartnerService {
+	return &partnerService{repo: repo, inventoryRepo: inventoryRepo, userRepo: userRepo, db: db, brevo: brevo}
 }
 
 func (s *partnerService) ListPartners() ([]models.Partner, error) { return s.repo.ListPartners() }
@@ -95,19 +120,41 @@ func (s *partnerService) GetPartner(id uuid.UUID) (*models.Partner, error) {
 	return row, nil
 }
 
-func (s *partnerService) CreatePartner(in dto.PartnerRequest) (*models.Partner, error) {
+func (s *partnerService) CreatePartner(in dto.PartnerRequest) (*PartnerCreateResult, error) {
 	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.BillingEmail) == "" {
 		return nil, errors.New("code, name, and billing_email are required")
+	}
+	code := strings.ToUpper(strings.TrimSpace(in.Code))
+	// A duplicate code is a user input problem, not a server error.
+	if _, err := s.repo.FindPartnerByCode(code); err == nil {
+		return nil, errors.New("partner code is already used")
 	}
 	active := true
 	if in.IsActive != nil {
 		active = *in.IsActive
 	}
-	row := &models.Partner{Code: strings.ToUpper(strings.TrimSpace(in.Code)), Name: strings.TrimSpace(in.Name), BillingEmail: strings.TrimSpace(in.BillingEmail), Phone: strings.TrimSpace(in.Phone), ContactName: strings.TrimSpace(in.ContactName), Address: strings.TrimSpace(in.Address), TaxNumber: strings.TrimSpace(in.TaxNumber), IsActive: active}
+	// Validate the optional login account before persisting the partner so a
+	// rejected account never leaves a half-created record.
+	if in.Account != nil {
+		if err := validatePartnerAccount(*in.Account); err != nil {
+			return nil, err
+		}
+	}
+	row := &models.Partner{Code: code, Name: strings.TrimSpace(in.Name), BillingEmail: strings.TrimSpace(in.BillingEmail), Phone: strings.TrimSpace(in.Phone), ContactName: strings.TrimSpace(in.ContactName), Address: strings.TrimSpace(in.Address), TaxNumber: strings.TrimSpace(in.TaxNumber), IsActive: active}
 	if err := s.repo.CreatePartner(row); err != nil {
 		return nil, err
 	}
-	return row, nil
+	result := &PartnerCreateResult{Partner: row}
+	if in.Account != nil {
+		account, err := s.createPartnerAccount(*row, *in.Account, uuid.Nil)
+		if err != nil {
+			// Roll back the partner so staff can retry with corrected account data.
+			_ = s.repo.DeletePartner(row.ID)
+			return nil, err
+		}
+		result.Account = account
+	}
+	return result, nil
 }
 
 func (s *partnerService) UpdatePartner(id uuid.UUID, in dto.PartnerRequest) (*models.Partner, error) {

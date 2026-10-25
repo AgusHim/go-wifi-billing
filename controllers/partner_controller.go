@@ -47,6 +47,8 @@ func (c *PartnerController) RegisterRoutes(router fiber.Router) {
 	admin.Put("/services/:id", c.UpdateService)
 	admin.Get("/:id", c.GetPartner)
 	admin.Put("/:id", c.UpdatePartner)
+	admin.Get("/:id/accounts", c.ListPartnerAccounts)
+	admin.Post("/:id/accounts", c.CreatePartnerAccount)
 	admin.Post("/:id/members", c.AddMember)
 	admin.Get("/:id/services", c.ListServices)
 	admin.Post("/:id/services", c.CreateService)
@@ -121,6 +123,27 @@ func (c *PartnerController) UpdateService(ctx *fiber.Ctx) error {
 	}
 	row, err := c.service.UpdateBandwidthService(id, in)
 	return respond(ctx, row, err, "Partner service updated")
+}
+func (c *PartnerController) ListPartnerAccounts(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	rows, err := c.service.ListPartnerAccounts(id)
+	return respond(ctx, rows, err, "Success get partner accounts")
+}
+func (c *PartnerController) CreatePartnerAccount(ctx *fiber.Ctx) error {
+	id, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	actor, _ := authenticatedUserID(ctx)
+	var in dto.PartnerAccountRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return badRequest(ctx, err)
+	}
+	row, err := c.service.CreatePartnerAccount(id, in, actor)
+	return respond(ctx, row, err, "Partner login account created")
 }
 func (c *PartnerController) AddMember(ctx *fiber.Ctx) error {
 	id, err := parseID(ctx, "id")
