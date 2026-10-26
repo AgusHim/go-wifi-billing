@@ -226,6 +226,7 @@ func addPartnerPolicies() {
 		{Method: http.MethodPut, Path: "/admin_api/partners/:id", Permission: "partners.manage", DataScope: "global", Risk: "high"},
 		{Method: http.MethodGet, Path: "/admin_api/partners/:id/accounts", Permission: "partners.read", DataScope: "global", Risk: "low"},
 		{Method: http.MethodPost, Path: "/admin_api/partners/:id/accounts", Permission: "partners.manage", DataScope: "global", Risk: "high"},
+		{Method: http.MethodPost, Path: "/admin_api/partners/:id/payments", Permission: "partners.payments.verify", DataScope: "global", Risk: "high"},
 		{Method: http.MethodGet, Path: "/admin_api/partners/:id/usages", Permission: "partners.usages.read", DataScope: "global", Risk: "low"},
 		{Method: http.MethodPost, Path: "/admin_api/partners/:id/usages", Permission: "partners.usages.manage", DataScope: "global", Risk: "high"},
 		{Method: http.MethodGet, Path: "/admin_api/partners/:id/allocations", Permission: "partners.allocations.read", DataScope: "global", Risk: "low"},

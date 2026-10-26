@@ -56,6 +56,7 @@ func TestPartnerRoutesRejectAnonymousRequests(t *testing.T) {
 		{http.MethodGet, "/admin_api/partners/usages"},
 		{http.MethodGet, "/admin_api/partners/allocations"},
 		{http.MethodGet, "/admin_api/partners/accounts"},
+		{http.MethodPost, "/admin_api/partners/" + id + "/payments"},
 		{http.MethodGet, "/admin_api/partners/legal-documents"},
 		{http.MethodPost, "/admin_api/partners/reminders/send"},
 		{http.MethodPost, "/admin_api/partners/invoices/generate-recurring"},

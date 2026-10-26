@@ -28,7 +28,7 @@ type PartnerRepository interface {
 	CreateInvoice(*models.PartnerInvoice) error
 	FindInvoice(id uuid.UUID) (*models.PartnerInvoice, error)
 	ListInvoices(partnerID *uuid.UUID) ([]models.PartnerInvoice, error)
-	ListInvoicesFiltered(partnerID *uuid.UUID, status string, overdueOnly bool) ([]models.PartnerInvoice, error)
+	ListInvoicesFiltered(filter PartnerInvoiceFilter) ([]models.PartnerInvoice, error)
 	ListInvoicesDueForReminder() ([]models.PartnerInvoice, error)
 	ListOverdueInvoices() ([]models.PartnerInvoice, error)
 	SaveInvoice(*models.PartnerInvoice) error
@@ -70,6 +70,15 @@ type PartnerRepository interface {
 	FindDocument(id uuid.UUID) (*models.LegalDocument, error)
 	ListDocuments(filter LegalDocumentFilter) ([]models.LegalDocument, error)
 	DeleteDocument(id uuid.UUID) error
+}
+
+// PartnerInvoiceFilter narrows the partner invoice list. UnpaidOnly backs the
+// payables (hutang) view: every issued invoice that still has an open balance.
+type PartnerInvoiceFilter struct {
+	PartnerID   *uuid.UUID
+	Status      string
+	OverdueOnly bool
+	UnpaidOnly  bool
 }
 
 // LegalDocumentFilter narrows the legal document archive. A document either

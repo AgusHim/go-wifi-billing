@@ -3,6 +3,7 @@ package routes
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -71,7 +72,7 @@ func TestPartnerLoginAccountCanReachPortalDashboard(t *testing.T) {
 			}
 		}
 	}
-	grant(adminRole, "partners.read", "partners.manage", "partners.invoices.read", "partners.invoices.manage", "partners.documents.read", "partners.documents.manage")
+	grant(adminRole, "partners.read", "partners.manage", "partners.invoices.read", "partners.invoices.manage", "partners.documents.read", "partners.documents.manage", "partners.payments.verify")
 	grant(customerRole, "self.partner.read", "self.partner.payments.create")
 
 	staffPassword := "staff-password"
@@ -125,6 +126,33 @@ func TestPartnerLoginAccountCanReachPortalDashboard(t *testing.T) {
 	get := func(path, token string) (*http.Response, map[string]any) {
 		t.Helper()
 		request := httptest.NewRequest(http.MethodGet, path, nil)
+		if token != "" {
+			request.Header.Set("Authorization", "Bearer "+token)
+		}
+		response, err := app.Test(request)
+		if err != nil {
+			t.Fatalf("request %s: %v", path, err)
+		}
+		parsed := map[string]any{}
+		_ = json.NewDecoder(response.Body).Decode(&parsed)
+		return response, parsed
+	}
+	// postMultipart mirrors the portal upload form: text fields plus an optional
+	// proof file in the same request.
+	postMultipart := func(path, token string, fields map[string]string) (*http.Response, map[string]any) {
+		t.Helper()
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		for key, value := range fields {
+			if err := writer.WriteField(key, value); err != nil {
+				t.Fatalf("write field %s: %v", key, err)
+			}
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("close multipart writer: %v", err)
+		}
+		request := httptest.NewRequest(http.MethodPost, path, body)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
 		if token != "" {
 			request.Header.Set("Authorization", "Bearer "+token)
 		}
@@ -288,5 +316,73 @@ func TestPartnerLoginAccountCanReachPortalDashboard(t *testing.T) {
 	}
 	if len(payload["data"].([]any)) != 2 {
 		t.Fatalf("portal document count = %d, want 2", len(payload["data"].([]any)))
+	}
+
+	// 12. Issuing the draft turns it into a payable (hutang) for the partner.
+	invoiceID := createdInvoice["id"].(string)
+	response, payload = post("/admin_api/partners/invoices/"+invoiceID+"/issue", staffToken, nil)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("issue invoice status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	response, payload = get("/admin_api/partners/invoices?unpaid=true", staffToken)
+	if response.StatusCode != http.StatusOK || len(payload["data"].([]any)) != 1 {
+		t.Fatalf("payables list = %d (%v), want 1", len(payload["data"].([]any)), payload)
+	}
+
+	// 13. The partner submits a payment with a transfer reference using a
+	// multipart form (the same request shape used when a proof file is attached).
+	response, payload = postMultipart("/partner_api/invoices/"+invoiceID+"/payments", partnerToken, map[string]string{
+		"amount": "1000000", "method": "transfer", "reference": "BCA-9001", "idempotency_key": "portal-e2e-1",
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("portal multipart payment status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	submitted := payload["data"].(map[string]any)
+	if submitted["status"] != "pending" || submitted["reference"] != "BCA-9001" {
+		t.Fatalf("portal payment = %+v, want a pending transfer reference", submitted)
+	}
+	// A pending submission must not change the balance.
+	response, payload = get("/admin_api/partners/invoices/"+invoiceID, staffToken)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("get invoice status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	if payload["data"].(map[string]any)["balance_due"].(float64) != 3277500 {
+		t.Fatalf("balance after pending payment = %v, want 3277500", payload["data"].(map[string]any)["balance_due"])
+	}
+
+	// 14. Staff verifies the partner submission.
+	paymentID := submitted["id"].(string)
+	response, payload = post("/admin_api/partners/payments/"+paymentID+"/review", staffToken, map[string]any{"approve": true})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("verify payment status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	if payload["data"].(map[string]any)["status"] != "verified" {
+		t.Fatalf("verified payment = %+v", payload["data"])
+	}
+
+	// 15. Staff settles the rest directly on behalf of the partner.
+	response, payload = post("/admin_api/partners/"+partnerID+"/payments", staffToken, map[string]any{
+		"invoice_id": invoiceID, "amount": 2277500, "method": "cash", "reference": "KAS-001",
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("record staff payment status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	recorded := payload["data"].(map[string]any)
+	if recorded["status"] != "verified" {
+		t.Fatalf("staff payment status = %v, want verified", recorded["status"])
+	}
+	response, payload = get("/admin_api/partners/invoices/"+invoiceID, staffToken)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("get settled invoice status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	settled := payload["data"].(map[string]any)
+	if settled["status"] != "paid" || settled["balance_due"].(float64) != 0 {
+		t.Fatalf("settled invoice = %v/%v, want paid/0", settled["status"], settled["balance_due"])
+	}
+
+	// 16. The settled invoice leaves the payable list.
+	response, payload = get("/admin_api/partners/invoices?unpaid=true", staffToken)
+	if response.StatusCode != http.StatusOK || len(payload["data"].([]any)) != 0 {
+		t.Fatalf("payables after settlement = %d (%v), want 0", len(payload["data"].([]any)), payload)
 	}
 }

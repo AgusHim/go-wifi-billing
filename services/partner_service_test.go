@@ -689,3 +689,154 @@ func TestPartnerDocumentScoping(t *testing.T) {
 		t.Fatal("expected the document to become global")
 	}
 }
+
+// TestPartnerStaffRecordedPayment covers the owner/staff flow: settling an
+// invoice on behalf of a partner, with and without immediate verification.
+func TestPartnerStaffRecordedPayment(t *testing.T) {
+	svc, _ := newPartnerTestService(t)
+	partner := createTestPartner(t, svc, "MITRA14")
+	other := createTestPartner(t, svc, "MITRA15")
+	actor := uuid.New()
+
+	service := createTestService(t, svc, partner.ID, "fixed", 1000000)
+	invoice, err := svc.GenerateInvoiceForService(partner.ID, dto.PartnerInvoiceFromServiceRequest{ServiceID: service.ID.String(), PeriodYear: 2026, PeriodMonth: 12}, actor)
+	if err != nil {
+		t.Fatalf("generate invoice: %v", err)
+	}
+	if _, err := svc.IssueInvoice(invoice.ID, actor); err != nil {
+		t.Fatalf("issue invoice: %v", err)
+	}
+
+	// Staff cannot settle another partner's invoice through this endpoint.
+	if _, err := svc.RecordPartnerPayment(other.ID, dto.PartnerStaffPaymentRequest{InvoiceID: invoice.ID.String(), Amount: 100000}, actor); err == nil {
+		t.Fatal("expected a foreign partner invoice to be rejected")
+	}
+	// An amount above the outstanding balance is refused.
+	if _, err := svc.RecordPartnerPayment(partner.ID, dto.PartnerStaffPaymentRequest{InvoiceID: invoice.ID.String(), Amount: 2000000}, actor); err == nil {
+		t.Fatal("expected an overpayment to be rejected")
+	}
+
+	// A partial payment recorded by staff settles straight away.
+	partial, err := svc.RecordPartnerPayment(partner.ID, dto.PartnerStaffPaymentRequest{
+		InvoiceID: invoice.ID.String(), Amount: 400000, Method: "transfer", Reference: "BCA-123",
+	}, actor)
+	if err != nil {
+		t.Fatalf("record staff payment: %v", err)
+	}
+	if partial.Status != "verified" {
+		t.Fatalf("auto-verified payment status = %q, want verified", partial.Status)
+	}
+	if partial.VerifiedByID == nil || *partial.VerifiedByID != actor {
+		t.Fatal("payment must record who verified it")
+	}
+	assertInvoiceState(t, svc, invoice.ID, "partially_paid", 600000, 400000)
+
+	// Repeating the same request with the same key must not double-charge.
+	repeat, err := svc.RecordPartnerPayment(partner.ID, dto.PartnerStaffPaymentRequest{
+		InvoiceID: invoice.ID.String(), Amount: 400000, Method: "transfer", IdempotencyKey: "staff-key-1",
+	}, actor)
+	if err != nil {
+		t.Fatalf("record staff payment: %v", err)
+	}
+	again, err := svc.RecordPartnerPayment(partner.ID, dto.PartnerStaffPaymentRequest{
+		InvoiceID: invoice.ID.String(), Amount: 400000, Method: "transfer", IdempotencyKey: "staff-key-1",
+	}, actor)
+	if err != nil {
+		t.Fatalf("repeat staff payment: %v", err)
+	}
+	if again.ID != repeat.ID {
+		t.Fatalf("idempotent staff payment created a new row %s != %s", again.ID, repeat.ID)
+	}
+	assertInvoiceState(t, svc, invoice.ID, "partially_paid", 200000, 800000)
+
+	// auto_verify=false parks the record as pending without touching the balance.
+	noVerify := false
+	pending, err := svc.RecordPartnerPayment(partner.ID, dto.PartnerStaffPaymentRequest{
+		InvoiceID: invoice.ID.String(), Amount: 200000, Method: "cash", AutoVerify: &noVerify,
+	}, actor)
+	if err != nil {
+		t.Fatalf("record pending staff payment: %v", err)
+	}
+	if pending.Status != "pending" {
+		t.Fatalf("status = %q, want pending", pending.Status)
+	}
+	assertInvoiceState(t, svc, invoice.ID, "partially_paid", 200000, 800000)
+
+	// Verifying the parked record settles the invoice.
+	if _, err := svc.VerifyPayment(pending.ID, dto.PartnerPaymentVerificationRequest{Approve: true}, actor); err != nil {
+		t.Fatalf("verify parked payment: %v", err)
+	}
+	assertInvoiceState(t, svc, invoice.ID, "paid", 0, 1000000)
+
+	// A paid invoice is no longer payable.
+	if _, err := svc.RecordPartnerPayment(partner.ID, dto.PartnerStaffPaymentRequest{InvoiceID: invoice.ID.String(), Amount: 1000}, actor); err == nil {
+		t.Fatal("expected a paid invoice to reject new payments")
+	}
+
+	history, err := svc.ListInvoiceHistory(invoice.ID)
+	if err != nil {
+		t.Fatalf("list history: %v", err)
+	}
+	notes := map[string]bool{}
+	for _, entry := range history {
+		notes[entry.Note] = true
+	}
+	if !notes["payment recorded by staff"] {
+		t.Fatal("staff-recorded payment must appear in the invoice history")
+	}
+}
+
+// TestPartnerPayablesFilter covers the hutang list: only issued invoices with an
+// open balance are returned.
+func TestPartnerPayablesFilter(t *testing.T) {
+	svc, _ := newPartnerTestService(t)
+	partner := createTestPartner(t, svc, "MITRA16")
+	actor := uuid.New()
+
+	service := createTestService(t, svc, partner.ID, "fixed", 500000)
+
+	// A draft is not a payable yet.
+	draft, err := svc.GenerateInvoiceForService(partner.ID, dto.PartnerInvoiceFromServiceRequest{ServiceID: service.ID.String(), PeriodYear: 2027, PeriodMonth: 1}, actor)
+	if err != nil {
+		t.Fatalf("generate draft: %v", err)
+	}
+	unpaid, err := svc.ListInvoicesFiltered(repositories.PartnerInvoiceFilter{UnpaidOnly: true})
+	if err != nil {
+		t.Fatalf("list payables: %v", err)
+	}
+	if len(unpaid) != 0 {
+		t.Fatalf("draft invoice counted as payable: %d", len(unpaid))
+	}
+
+	// Issued invoices become payables.
+	issued, err := svc.IssueInvoice(draft.ID, actor)
+	if err != nil {
+		t.Fatalf("issue draft: %v", err)
+	}
+	unpaid, err = svc.ListInvoicesFiltered(repositories.PartnerInvoiceFilter{UnpaidOnly: true})
+	if err != nil {
+		t.Fatalf("list payables: %v", err)
+	}
+	if len(unpaid) != 1 || unpaid[0].ID != issued.ID {
+		t.Fatalf("payables = %d rows, want the issued invoice", len(unpaid))
+	}
+
+	// Settling it removes it from the payable list but keeps it in the archive.
+	if _, err := svc.RecordPartnerPayment(partner.ID, dto.PartnerStaffPaymentRequest{InvoiceID: issued.ID.String(), Amount: 500000}, actor); err != nil {
+		t.Fatalf("settle invoice: %v", err)
+	}
+	unpaid, err = svc.ListInvoicesFiltered(repositories.PartnerInvoiceFilter{UnpaidOnly: true})
+	if err != nil {
+		t.Fatalf("list payables: %v", err)
+	}
+	if len(unpaid) != 0 {
+		t.Fatalf("settled invoice still listed as payable: %d", len(unpaid))
+	}
+	all, err := svc.ListInvoicesFiltered(repositories.PartnerInvoiceFilter{})
+	if err != nil {
+		t.Fatalf("list all invoices: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("archive lost the settled invoice: %d", len(all))
+	}
+}

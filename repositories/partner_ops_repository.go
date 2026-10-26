@@ -185,17 +185,21 @@ func (r *partnerRepository) ListStatusHistory(invoiceID uuid.UUID) ([]models.Par
 	return rows, err
 }
 
-func (r *partnerRepository) ListInvoicesFiltered(partnerID *uuid.UUID, status string, overdueOnly bool) ([]models.PartnerInvoice, error) {
+func (r *partnerRepository) ListInvoicesFiltered(filter PartnerInvoiceFilter) ([]models.PartnerInvoice, error) {
 	var rows []models.PartnerInvoice
 	query := r.db.Preload("Partner").Preload("Lines").Preload("Payments")
-	if partnerID != nil {
-		query = query.Where("partner_id = ?", *partnerID)
+	if filter.PartnerID != nil {
+		query = query.Where("partner_id = ?", *filter.PartnerID)
 	}
-	if status != "" {
-		query = query.Where("status = ?", status)
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
 	}
-	if overdueOnly {
+	if filter.OverdueOnly {
 		query = query.Where("balance_due > 0 AND due_date < ?", time.Now())
+	}
+	if filter.UnpaidOnly {
+		// Payables: money is still owed, so drafts and void invoices are out.
+		query = query.Where("balance_due > 0 AND status IN ?", []string{"issued", "partially_paid", "overdue"})
 	}
 	err := query.Order("due_date DESC").Find(&rows).Error
 	return rows, err

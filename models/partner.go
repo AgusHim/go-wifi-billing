@@ -166,7 +166,8 @@ type PartnerPayment struct {
 	VerifiedAt      *time.Time `json:"verified_at"`
 	RejectionReason string     `json:"rejection_reason" gorm:"type:text"`
 	// IdempotencyKey makes payment submission safe to retry: repeating the same
-	// key returns the original submission instead of creating a duplicate.
+	// key returns the original submission instead of creating a duplicate. The
+	// service always stores a value because the column is unique.
 	IdempotencyKey string         `json:"idempotency_key" gorm:"type:varchar(120);uniqueIndex"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`

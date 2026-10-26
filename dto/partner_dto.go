@@ -137,6 +137,19 @@ type PartnerPaymentVerificationRequest struct {
 	RejectionReason string `json:"rejection_reason"`
 }
 
+// PartnerStaffPaymentRequest records a payment on behalf of a partner. Staff can
+// settle an invoice directly (AutoVerify) or park the record for review.
+type PartnerStaffPaymentRequest struct {
+	InvoiceID      string `json:"invoice_id"`
+	Amount         int    `json:"amount"`
+	Method         string `json:"method"`
+	Reference      string `json:"reference"`
+	ProofURL       string `json:"proof_url"`
+	IdempotencyKey string `json:"idempotency_key"`
+	// AutoVerify defaults to true: money received by staff is settled at once.
+	AutoVerify *bool `json:"auto_verify"`
+}
+
 // BrevoWebhookEvent is the subset of a Brevo transactional event we persist to
 // correlate delivery/bounce/complaint with a sent notification.
 type BrevoWebhookEvent struct {

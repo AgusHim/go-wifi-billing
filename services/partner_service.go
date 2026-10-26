@@ -31,13 +31,14 @@ type PartnerService interface {
 	IssueInvoice(uuid.UUID, uuid.UUID) (*models.PartnerInvoice, error)
 	VoidInvoice(uuid.UUID, string, uuid.UUID) (*models.PartnerInvoice, error)
 	ListInvoices(*uuid.UUID) ([]models.PartnerInvoice, error)
-	ListInvoicesFiltered(*uuid.UUID, string, bool) ([]models.PartnerInvoice, error)
+	ListInvoicesFiltered(repositories.PartnerInvoiceFilter) ([]models.PartnerInvoice, error)
 	GetInvoice(uuid.UUID, *uuid.UUID) (*models.PartnerInvoice, error)
 	ListInvoiceHistory(uuid.UUID) ([]models.PartnerInvoiceStatusHistory, error)
 	ListInvoiceNotifications(uuid.UUID) ([]models.PartnerInvoiceNotification, error)
 	ResendInvoiceNotification(uuid.UUID, uuid.UUID) (*models.PartnerInvoiceNotification, error)
 	SubmitPayment(uuid.UUID, dto.PartnerPaymentRequest, uuid.UUID) (*models.PartnerPayment, error)
 	VerifyPayment(uuid.UUID, dto.PartnerPaymentVerificationRequest, uuid.UUID) (*models.PartnerPayment, error)
+	RecordPartnerPayment(uuid.UUID, dto.PartnerStaffPaymentRequest, uuid.UUID) (*models.PartnerPayment, error)
 	PartnerForUser(uuid.UUID) (*models.Partner, error)
 
 	RecordUsage(uuid.UUID, dto.PartnerBandwidthUsageRequest, uuid.UUID) (*models.PartnerBandwidthUsage, error)
@@ -435,8 +436,99 @@ func (s *partnerService) ListInvoices(partnerID *uuid.UUID) ([]models.PartnerInv
 	return s.repo.ListInvoices(partnerID)
 }
 
-func (s *partnerService) ListInvoicesFiltered(partnerID *uuid.UUID, status string, overdueOnly bool) ([]models.PartnerInvoice, error) {
-	return s.repo.ListInvoicesFiltered(partnerID, status, overdueOnly)
+func (s *partnerService) ListInvoicesFiltered(filter repositories.PartnerInvoiceFilter) ([]models.PartnerInvoice, error) {
+	return s.repo.ListInvoicesFiltered(filter)
+}
+
+// RecordPartnerPayment lets staff settle an invoice on behalf of a partner, for
+// example when cash or a bank transfer is received at the office. The record is
+// created and, unless auto_verify is disabled, settled in the same transaction
+// so the receivable can never be reduced without an auditable payment row.
+func (s *partnerService) RecordPartnerPayment(partnerID uuid.UUID, in dto.PartnerStaffPaymentRequest, actorID uuid.UUID) (*models.PartnerPayment, error) {
+	invoiceID, err := uuid.Parse(strings.TrimSpace(in.InvoiceID))
+	if err != nil {
+		return nil, errors.New("invalid invoice_id")
+	}
+	if in.Amount <= 0 {
+		return nil, errors.New("payment amount must be greater than zero")
+	}
+	key := strings.TrimSpace(in.IdempotencyKey)
+	if key != "" {
+		if existing, err := s.repo.FindPaymentByIdempotencyKey(key); err == nil && existing != nil {
+			return existing, nil
+		}
+	}
+	// The column is unique, so a caller that sends no key still needs a value.
+	if key == "" {
+		key = "auto:" + uuid.NewString()
+	}
+	autoVerify := true
+	if in.AutoVerify != nil {
+		autoVerify = *in.AutoVerify
+	}
+
+	var result models.PartnerPayment
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		var invoice models.PartnerInvoice
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&invoice, "id = ?", invoiceID).Error; err != nil {
+			return errors.New("invoice not found")
+		}
+		// A payment must never be attached to another partner's invoice.
+		if invoice.PartnerID != partnerID {
+			return errors.New("invoice not found")
+		}
+		if invoice.Status != "issued" && invoice.Status != "partially_paid" && invoice.Status != "overdue" {
+			return errors.New("invoice is not payable")
+		}
+		if in.Amount > invoice.BalanceDue {
+			return errors.New("payment amount must not exceed balance due")
+		}
+
+		now := time.Now()
+		payment := models.PartnerPayment{
+			InvoiceID: invoice.ID, SubmittedByID: &actorID, SubmittedAt: now,
+			Amount: in.Amount, Method: strings.TrimSpace(in.Method), Reference: strings.TrimSpace(in.Reference),
+			ProofURL: strings.TrimSpace(in.ProofURL), IdempotencyKey: key,
+		}
+		if autoVerify {
+			payment.Status = "verified"
+			payment.VerifiedByID = &actorID
+			payment.VerifiedAt = &now
+
+			previousStatus := invoice.Status
+			invoice.VerifiedPaidAmount += in.Amount
+			invoice.BalanceDue -= in.Amount
+			if invoice.BalanceDue <= 0 {
+				invoice.BalanceDue = 0
+				invoice.Status = "paid"
+			} else {
+				invoice.Status = "partially_paid"
+			}
+			if err := tx.Save(&invoice).Error; err != nil {
+				return err
+			}
+			if previousStatus != invoice.Status {
+				history := models.PartnerInvoiceStatusHistory{
+					InvoiceID: invoice.ID, FromStatus: previousStatus, ToStatus: invoice.Status,
+					Note: "payment recorded by staff", ChangedBy: &actorID,
+				}
+				if err := tx.Create(&history).Error; err != nil {
+					return err
+				}
+			}
+		} else {
+			payment.Status = "pending"
+		}
+		if err := tx.Create(&payment).Error; err != nil {
+			return err
+		}
+		result = payment
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 func (s *partnerService) GetInvoice(id uuid.UUID, partnerID *uuid.UUID) (*models.PartnerInvoice, error) {
 	invoice, err := s.repo.FindInvoice(id)
@@ -465,6 +557,10 @@ func (s *partnerService) SubmitPayment(invoiceID uuid.UUID, in dto.PartnerPaymen
 		if existing, err := s.repo.FindPaymentByIdempotencyKey(key); err == nil && existing != nil {
 			return existing, nil
 		}
+	}
+	// The column is unique, so a caller that sends no key still needs a value.
+	if key == "" {
+		key = "auto:" + uuid.NewString()
 	}
 	row := &models.PartnerPayment{InvoiceID: invoiceID, SubmittedByID: &submittedBy, SubmittedAt: time.Now(), Amount: in.Amount, Method: strings.TrimSpace(in.Method), Reference: strings.TrimSpace(in.Reference), ProofURL: strings.TrimSpace(in.ProofURL), Status: "pending", IdempotencyKey: key}
 	if err := s.repo.CreatePayment(row); err != nil {

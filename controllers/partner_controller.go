@@ -4,9 +4,11 @@ import (
 	"crypto/subtle"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Agushim/go_wifi_billing/dto"
+	"github.com/Agushim/go_wifi_billing/lib"
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
 	"github.com/Agushim/go_wifi_billing/repositories"
@@ -53,6 +55,7 @@ func (c *PartnerController) RegisterRoutes(router fiber.Router) {
 	admin.Put("/:id", c.UpdatePartner)
 	admin.Get("/:id/accounts", c.ListPartnerAccounts)
 	admin.Post("/:id/accounts", c.CreatePartnerAccount)
+	admin.Post("/:id/payments", c.RecordPartnerPayment)
 	admin.Post("/:id/members", c.AddMember)
 	admin.Get("/:id/services", c.ListServices)
 	admin.Post("/:id/services", c.CreateService)
@@ -182,16 +185,17 @@ func (c *PartnerController) CreateService(ctx *fiber.Ctx) error {
 	return respond(ctx, row, err, "Partner service created")
 }
 func (c *PartnerController) ListInvoices(ctx *fiber.Ctx) error {
-	var partnerID *uuid.UUID
-	if raw := strings.TrimSpace(ctx.Query("partner_id")); raw != "" {
-		parsed, err := uuid.Parse(raw)
-		if err != nil {
-			return badRequest(ctx, errors.New("invalid partner_id"))
-		}
-		partnerID = &parsed
+	partnerID, err := queryPartnerID(ctx)
+	if err != nil {
+		return badRequest(ctx, err)
 	}
-	overdueOnly := strings.TrimSpace(ctx.Query("overdue")) == "true"
-	rows, err := c.service.ListInvoicesFiltered(partnerID, strings.TrimSpace(ctx.Query("status")), overdueOnly)
+	filter := repositories.PartnerInvoiceFilter{
+		PartnerID:   partnerID,
+		Status:      strings.TrimSpace(ctx.Query("status")),
+		OverdueOnly: strings.TrimSpace(ctx.Query("overdue")) == "true",
+		UnpaidOnly:  strings.TrimSpace(ctx.Query("unpaid")) == "true",
+	}
+	rows, err := c.service.ListInvoicesFiltered(filter)
 	return respond(ctx, rows, err, "Success get partner invoices")
 }
 func (c *PartnerController) CreateInvoice(ctx *fiber.Ctx) error {
@@ -530,6 +534,25 @@ func (c *PartnerController) GetMyInvoice(ctx *fiber.Ctx) error {
 	row, err := c.service.GetInvoice(id, &partner.ID)
 	return respond(ctx, row, err, "Success get invoice")
 }
+
+// proofUpload extracts an optional uploaded payment proof from a multipart
+// request and stores it on Cloudinary. Returns an empty string when the request
+// is JSON or carries no file.
+func proofUpload(ctx *fiber.Ctx) (string, error) {
+	if !strings.HasPrefix(strings.ToLower(ctx.Get("Content-Type")), "multipart/form-data") {
+		return "", nil
+	}
+	file, err := ctx.FormFile("proof")
+	if err != nil || file == nil {
+		return "", nil
+	}
+	url, _, uploadErr := lib.UploadPartnerPaymentProof(file)
+	if uploadErr != nil {
+		return "", uploadErr
+	}
+	return url, nil
+}
+
 func (c *PartnerController) SubmitMyPayment(ctx *fiber.Ctx) error {
 	partner, err := c.portalPartner(ctx)
 	if err != nil {
@@ -543,12 +566,91 @@ func (c *PartnerController) SubmitMyPayment(ctx *fiber.Ctx) error {
 		return respond(ctx, nil, err, "")
 	}
 	userID, _ := authenticatedUserID(ctx)
-	var in dto.PartnerPaymentRequest
-	if err := ctx.BodyParser(&in); err != nil {
+	in, err := paymentRequest(ctx)
+	if err != nil {
 		return badRequest(ctx, err)
+	}
+	// A transfer proof uploaded with the submission wins over a pasted URL.
+	uploaded, err := proofUpload(ctx)
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	if uploaded != "" {
+		in.ProofURL = uploaded
 	}
 	row, err := c.service.SubmitPayment(id, in, userID)
 	return respond(ctx, row, err, "Payment submitted for verification")
+}
+
+// paymentRequest reads the payment payload from either a JSON body or a
+// multipart form so the portal can attach an uploaded transfer proof.
+func paymentRequest(ctx *fiber.Ctx) (dto.PartnerPaymentRequest, error) {
+	if strings.HasPrefix(strings.ToLower(ctx.Get("Content-Type")), "multipart/form-data") {
+		amount, _ := strconv.Atoi(strings.TrimSpace(ctx.FormValue("amount")))
+		return dto.PartnerPaymentRequest{
+			Amount:         amount,
+			Method:         strings.TrimSpace(ctx.FormValue("method")),
+			Reference:      strings.TrimSpace(ctx.FormValue("reference")),
+			ProofURL:       strings.TrimSpace(ctx.FormValue("proof_url")),
+			IdempotencyKey: strings.TrimSpace(ctx.FormValue("idempotency_key")),
+		}, nil
+	}
+	var in dto.PartnerPaymentRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return in, errors.New("invalid payment payload")
+	}
+	return in, nil
+}
+
+// RecordPartnerPayment lets staff settle an invoice on behalf of a partner, for
+// example when cash or a bank transfer is received at the office.
+func (c *PartnerController) RecordPartnerPayment(ctx *fiber.Ctx) error {
+	partnerID, err := parseID(ctx, "id")
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	actor, ok := authenticatedUserID(ctx)
+	if !ok {
+		return ctx.Status(401).JSON(fiber.Map{"success": false, "message": "unauthorized"})
+	}
+	in, err := staffPaymentRequest(ctx)
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	uploaded, err := proofUpload(ctx)
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	if uploaded != "" {
+		in.ProofURL = uploaded
+	}
+	row, err := c.service.RecordPartnerPayment(partnerID, in, actor)
+	return respond(ctx, row, err, "Partner payment recorded")
+}
+
+// staffPaymentRequest reads the staff payment payload from JSON or multipart.
+func staffPaymentRequest(ctx *fiber.Ctx) (dto.PartnerStaffPaymentRequest, error) {
+	if strings.HasPrefix(strings.ToLower(ctx.Get("Content-Type")), "multipart/form-data") {
+		amount, _ := strconv.Atoi(strings.TrimSpace(ctx.FormValue("amount")))
+		request := dto.PartnerStaffPaymentRequest{
+			InvoiceID:      strings.TrimSpace(ctx.FormValue("invoice_id")),
+			Amount:         amount,
+			Method:         strings.TrimSpace(ctx.FormValue("method")),
+			Reference:      strings.TrimSpace(ctx.FormValue("reference")),
+			ProofURL:       strings.TrimSpace(ctx.FormValue("proof_url")),
+			IdempotencyKey: strings.TrimSpace(ctx.FormValue("idempotency_key")),
+		}
+		if raw := strings.TrimSpace(ctx.FormValue("auto_verify")); raw != "" {
+			value := raw == "1" || strings.EqualFold(raw, "true")
+			request.AutoVerify = &value
+		}
+		return request, nil
+	}
+	var in dto.PartnerStaffPaymentRequest
+	if err := ctx.BodyParser(&in); err != nil {
+		return in, errors.New("invalid payment payload")
+	}
+	return in, nil
 }
 func (c *PartnerController) GetMyUsages(ctx *fiber.Ctx) error {
 	partner, err := c.portalPartner(ctx)
