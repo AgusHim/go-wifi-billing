@@ -68,8 +68,24 @@ type PartnerRepository interface {
 	CreateDocument(*models.LegalDocument) error
 	SaveDocument(*models.LegalDocument) error
 	FindDocument(id uuid.UUID) (*models.LegalDocument, error)
-	ListDocuments(partnerVisible *bool, category string) ([]models.LegalDocument, error)
+	ListDocuments(filter LegalDocumentFilter) ([]models.LegalDocument, error)
 	DeleteDocument(id uuid.UUID) error
+}
+
+// LegalDocumentFilter narrows the legal document archive. A document either
+// belongs to one partner or is global (no partner), so the archive can be
+// filtered per partner and per global scope.
+type LegalDocumentFilter struct {
+	// PartnerVisible, when set, restricts to published documents that are
+	// shared with partners (portal listings).
+	PartnerVisible *bool
+	Category       string
+	// PartnerID filters by the owning partner.
+	PartnerID *uuid.UUID
+	// IncludeUnassigned also matches documents that apply to every partner.
+	IncludeUnassigned bool
+	// UnassignedOnly matches only documents that apply to every partner.
+	UnassignedOnly bool
 }
 
 type partnerRepository struct{ db *gorm.DB }

@@ -477,3 +477,215 @@ func TestPartnerAccountValidationRejectsBadInput(t *testing.T) {
 		t.Fatal("expected a duplicate partner code to be rejected")
 	}
 }
+
+// TestPartnerManualMixedInvoice covers the multi-line invoice created from the
+// staff dashboard: a bandwidth line with an explicit period, a sold inventory
+// line, and a free-form line in one invoice.
+func TestPartnerManualMixedInvoice(t *testing.T) {
+	svc, db := newPartnerTestService(t)
+	partner := createTestPartner(t, svc, "MITRA11")
+	actor := uuid.New()
+
+	service := createTestService(t, svc, partner.ID, "fixed", 3000000)
+
+	item := models.InventoryItem{ID: uuid.New(), SKU: "ROUTER-Y", Name: "Router Y", Unit: "unit", IsActive: true}
+	location := models.InventoryLocation{ID: uuid.New(), Name: "Gudang", Type: "warehouse", IsActive: true}
+	if err := db.Create(&item).Error; err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+	if err := db.Create(&location).Error; err != nil {
+		t.Fatalf("create location: %v", err)
+	}
+	if err := db.Create(&models.InventoryStock{ID: uuid.New(), ItemID: item.ID, LocationID: location.ID, QuantityOnHand: 5, AverageCost: 500000}).Error; err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+	sale, err := svc.CreateAllocation(partner.ID, dto.PartnerAllocationRequest{
+		ItemID: item.ID.String(), Quantity: 2, UnitPrice: 750000,
+		FromLocationID: location.ID.String(), TransactionType: "sale",
+	}, actor)
+	if err != nil {
+		t.Fatalf("create sale allocation: %v", err)
+	}
+
+	year, month := 2026, 11
+	invoice, err := svc.CreateInvoice(dto.PartnerInvoiceRequest{
+		PartnerID: partner.ID.String(),
+		DueDate:   time.Now().AddDate(0, 0, 10),
+		Lines: []dto.PartnerInvoiceLineRequest{
+			{Description: "Dedicated 100Mbps - November 2026", LineType: "bandwidth", Quantity: 1, Unit: "bulan", UnitPrice: 3000000, ServiceID: service.ID.String(), PeriodYear: &year, PeriodMonth: &month},
+			{Description: "Penjualan Router Y", LineType: "inventory", Quantity: 2, Unit: "unit", UnitPrice: 750000, AllocationID: sale.ID.String()},
+			{Description: "Biaya instalasi", LineType: "other", Quantity: 1, Unit: "kali", UnitPrice: 250000, TaxAmount: 27500},
+		},
+	}, actor)
+	if err != nil {
+		t.Fatalf("create mixed invoice: %v", err)
+	}
+	if invoice.Status != "draft" {
+		t.Fatalf("status = %q, want draft", invoice.Status)
+	}
+	if len(invoice.Lines) != 3 {
+		t.Fatalf("line count = %d, want 3", len(invoice.Lines))
+	}
+	if invoice.Subtotal != 4750000 {
+		t.Fatalf("subtotal = %d, want 4750000", invoice.Subtotal)
+	}
+	if invoice.TaxAmount != 27500 || invoice.Total != 4777500 || invoice.BalanceDue != invoice.Total {
+		t.Fatalf("tax/total/balance = %d/%d/%d", invoice.TaxAmount, invoice.Total, invoice.BalanceDue)
+	}
+
+	// The sold item must be linked to the invoice line so it cannot be billed twice.
+	billed, err := svc.ListAllocations(&partner.ID, "", "sale")
+	if err != nil || len(billed) != 1 {
+		t.Fatalf("list sale allocations = %v (%d), want 1", err, len(billed))
+	}
+	if billed[0].InvoiceLineID == nil {
+		t.Fatal("sold allocation was not linked to the invoice line")
+	}
+
+	// The same service period must be rejected on a second invoice.
+	if _, err := svc.CreateInvoice(dto.PartnerInvoiceRequest{
+		PartnerID: partner.ID.String(), DueDate: time.Now(),
+		Lines: []dto.PartnerInvoiceLineRequest{{
+			Description: "Dedicated 100Mbps - November 2026", LineType: "bandwidth", Quantity: 1, Unit: "bulan",
+			UnitPrice: 3000000, ServiceID: service.ID.String(), PeriodYear: &year, PeriodMonth: &month,
+		}},
+	}, actor); err == nil {
+		t.Fatal("expected the billed service period to be rejected")
+	}
+
+	// Issuing the draft records the audit trail.
+	issued, err := svc.IssueInvoice(invoice.ID, actor)
+	if err != nil {
+		t.Fatalf("issue invoice: %v", err)
+	}
+	if issued.Status != "issued" {
+		t.Fatalf("issued status = %q, want issued", issued.Status)
+	}
+	history, err := svc.ListInvoiceHistory(invoice.ID)
+	if err != nil || len(history) < 2 {
+		t.Fatalf("status history = %v (%d), want at least 2", err, len(history))
+	}
+}
+
+// TestPartnerDocumentScoping covers the legal document archive: each partner
+// owns its own documents, documents without a partner apply to everyone, and a
+// partner can only read documents that are shared and belong to it.
+func TestPartnerDocumentScoping(t *testing.T) {
+	svc, _ := newPartnerTestService(t)
+	first := createTestPartner(t, svc, "MITRA12")
+	second := createTestPartner(t, svc, "MITRA13")
+	actor := uuid.New()
+
+	firstID := first.ID.String()
+	secondID := second.ID.String()
+	create := func(name string, partnerID *string, visible bool) *models.LegalDocument {
+		t.Helper()
+		doc, err := svc.CreateLegalDocument(dto.LegalDocumentRequest{
+			Name: name, FilePath: "legal/" + name + ".pdf", Status: "published",
+			IsPartnerVisible: visible, PartnerID: partnerID,
+		}, actor)
+		if err != nil {
+			t.Fatalf("create document %s: %v", name, err)
+		}
+		return doc
+	}
+
+	global := create("NIB Cantika", nil, true)
+	firstDoc := create("Perjanjian Mitra12", &firstID, true)
+	secondDoc := create("Perjanjian Mitra13", &secondID, true)
+	firstPrivate := create("Internal Mitra12", &firstID, false)
+
+	if global.PartnerID != nil {
+		t.Fatal("a document created without partner_id must be global")
+	}
+	if firstDoc.PartnerID == nil || *firstDoc.PartnerID != first.ID {
+		t.Fatal("document was not assigned to the requested partner")
+	}
+	if firstDoc.PartnerName != first.Name || firstDoc.PartnerCode != "MITRA12" {
+		t.Fatalf("document partner label = %q/%q", firstDoc.PartnerName, firstDoc.PartnerCode)
+	}
+
+	// Staff archive without a filter returns everything.
+	all, err := svc.ListLegalDocuments(repositories.LegalDocumentFilter{})
+	if err != nil {
+		t.Fatalf("list all documents: %v", err)
+	}
+	if len(all) != 4 {
+		t.Fatalf("unfiltered document count = %d, want 4", len(all))
+	}
+
+	// Filter by partner id returns only that partner's documents.
+	mine, err := svc.ListLegalDocuments(repositories.LegalDocumentFilter{PartnerID: &first.ID})
+	if err != nil {
+		t.Fatalf("list partner documents: %v", err)
+	}
+	if len(mine) != 2 {
+		t.Fatalf("partner document count = %d, want 2", len(mine))
+	}
+	for _, doc := range mine {
+		if doc.PartnerID == nil || *doc.PartnerID != first.ID {
+			t.Fatalf("partner filter returned a foreign document: %+v", doc)
+		}
+	}
+
+	// Filter for the global scope returns only documents without a partner.
+	globals, err := svc.ListLegalDocuments(repositories.LegalDocumentFilter{UnassignedOnly: true})
+	if err != nil {
+		t.Fatalf("list global documents: %v", err)
+	}
+	if len(globals) != 1 || globals[0].ID != global.ID {
+		t.Fatalf("global document count = %d, want only the NIB", len(globals))
+	}
+
+	// Portal listing: own documents plus the ones shared with everyone.
+	visible := true
+	portal, err := svc.ListLegalDocuments(repositories.LegalDocumentFilter{
+		PartnerVisible: &visible, PartnerID: &first.ID, IncludeUnassigned: true,
+	})
+	if err != nil {
+		t.Fatalf("list portal documents: %v", err)
+	}
+	if len(portal) != 2 {
+		t.Fatalf("portal document count = %d, want 2 (own + global)", len(portal))
+	}
+	for _, doc := range portal {
+		if doc.ID == secondDoc.ID || doc.ID == firstPrivate.ID {
+			t.Fatalf("portal leaked a foreign or private document: %s", doc.Name)
+		}
+	}
+
+	// Cross-partner reads are blocked, shared documents are readable.
+	if _, err := svc.GetLegalDocument(firstDoc.ID, &second.ID); err == nil {
+		t.Fatal("expected a foreign partner document to be hidden")
+	}
+	if _, err := svc.GetLegalDocument(firstDoc.ID, &first.ID); err != nil {
+		t.Fatalf("owner partner should read its own document: %v", err)
+	}
+	if _, err := svc.GetLegalDocument(global.ID, &second.ID); err != nil {
+		t.Fatalf("a global document should be readable by any partner: %v", err)
+	}
+	if _, err := svc.GetLegalDocument(firstPrivate.ID, &first.ID); err == nil {
+		t.Fatal("expected a document not shared with partners to be hidden")
+	}
+	if _, err := svc.GetLegalDocument(secondDoc.ID, nil); err != nil {
+		t.Fatalf("staff should read any document: %v", err)
+	}
+
+	// An unknown partner id is rejected instead of silently stored.
+	bogus := uuid.NewString()
+	if _, err := svc.CreateLegalDocument(dto.LegalDocumentRequest{
+		Name: "Salah mitra", FilePath: "legal/x.pdf", Status: "published", PartnerID: &bogus,
+	}, actor); err == nil {
+		t.Fatal("expected an unknown partner_id to be rejected")
+	}
+
+	// Updating with an empty partner_id turns a partner document back to global.
+	cleared := ""
+	updated, err := svc.UpdateLegalDocument(firstDoc.ID, dto.LegalDocumentRequest{PartnerID: &cleared})
+	if err != nil {
+		t.Fatalf("clear document partner: %v", err)
+	}
+	if updated.PartnerID != nil {
+		t.Fatal("expected the document to become global")
+	}
+}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agushim/go_wifi_billing/dto"
 	"github.com/Agushim/go_wifi_billing/models"
+	"github.com/Agushim/go_wifi_billing/repositories"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -664,8 +665,13 @@ func (s *partnerService) CreateLegalDocument(in dto.LegalDocumentRequest, actorI
 	if status != "draft" && status != "published" && status != "archived" {
 		return nil, errors.New("status must be draft, published, or archived")
 	}
+	partnerID, err := s.resolveDocumentPartner(in.PartnerID)
+	if err != nil {
+		return nil, err
+	}
 	row := &models.LegalDocument{
-		Name: strings.TrimSpace(in.Name), Category: strings.TrimSpace(in.Category), Version: strings.TrimSpace(in.Version),
+		PartnerID: partnerID,
+		Name:      strings.TrimSpace(in.Name), Category: strings.TrimSpace(in.Category), Version: strings.TrimSpace(in.Version),
 		EffectiveDate: in.EffectiveDate, ExpiresAt: in.ExpiresAt, FilePath: strings.TrimSpace(in.FilePath),
 		MimeType: strings.TrimSpace(in.MimeType), FileSize: in.FileSize, Status: status,
 		IsPartnerVisible: in.IsPartnerVisible, Notes: strings.TrimSpace(in.Notes), UploadedByID: &actorID,
@@ -673,7 +679,41 @@ func (s *partnerService) CreateLegalDocument(in dto.LegalDocumentRequest, actorI
 	if err := s.repo.CreateDocument(row); err != nil {
 		return nil, err
 	}
+	s.attachDocumentPartnerLabel(row)
 	return row, nil
+}
+
+// resolveDocumentPartner turns the request value into a stored partner id. A
+// nil or empty value stores a global document that applies to every partner.
+func (s *partnerService) resolveDocumentPartner(value *string) (*uuid.UUID, error) {
+	if value == nil {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil, nil
+	}
+	partnerID, err := uuid.Parse(trimmed)
+	if err != nil {
+		return nil, errors.New("invalid partner_id")
+	}
+	if _, err := s.repo.FindPartner(partnerID); err != nil {
+		return nil, errors.New("partner not found")
+	}
+	return &partnerID, nil
+}
+
+// attachDocumentPartnerLabel fills the display-only partner label.
+func (s *partnerService) attachDocumentPartnerLabel(row *models.LegalDocument) {
+	if row == nil || row.PartnerID == nil {
+		return
+	}
+	partner, err := s.repo.FindPartner(*row.PartnerID)
+	if err != nil {
+		return
+	}
+	row.PartnerName = partner.Name
+	row.PartnerCode = partner.Code
 }
 
 func (s *partnerService) UpdateLegalDocument(id uuid.UUID, in dto.LegalDocumentRequest) (*models.LegalDocument, error) {
@@ -705,26 +745,59 @@ func (s *partnerService) UpdateLegalDocument(id uuid.UUID, in dto.LegalDocumentR
 	}
 	row.IsPartnerVisible = in.IsPartnerVisible
 	row.Notes = strings.TrimSpace(in.Notes)
+	// PartnerID is only touched when the caller sends the field explicitly.
+	if in.PartnerID != nil {
+		partnerID, err := s.resolveDocumentPartner(in.PartnerID)
+		if err != nil {
+			return nil, err
+		}
+		row.PartnerID = partnerID
+	}
 	if err := s.repo.SaveDocument(row); err != nil {
 		return nil, err
 	}
+	s.attachDocumentPartnerLabel(row)
 	return row, nil
 }
 
-func (s *partnerService) ListLegalDocuments(partnerVisible *bool, category string) ([]models.LegalDocument, error) {
-	return s.repo.ListDocuments(partnerVisible, category)
+// ListLegalDocuments returns the archive, filtered per partner when requested.
+func (s *partnerService) ListLegalDocuments(filter repositories.LegalDocumentFilter) ([]models.LegalDocument, error) {
+	rows, err := s.repo.ListDocuments(filter)
+	if err != nil {
+		return nil, err
+	}
+	// Only cross-partner listings need the partner label; a single partner view
+	// already knows which partner it belongs to.
+	if filter.PartnerID == nil {
+		labels := s.partnerLabels()
+		for i := range rows {
+			if rows[i].PartnerID == nil {
+				continue
+			}
+			if partner, ok := labels[*rows[i].PartnerID]; ok {
+				rows[i].PartnerName = partner.Name
+				rows[i].PartnerCode = partner.Code
+			}
+		}
+	}
+	return rows, nil
 }
 
 // GetLegalDocument enforces partner scoping: a partner user may only read a
-// document that is published and explicitly shared with partners.
+// document that is published, shared with partners, and either belongs to that
+// partner or applies to every partner.
 func (s *partnerService) GetLegalDocument(id uuid.UUID, partnerID *uuid.UUID) (*models.LegalDocument, error) {
 	row, err := s.repo.FindDocument(id)
 	if err != nil {
 		return nil, errors.New("document not found")
 	}
-	if partnerID != nil && (!row.IsPartnerVisible || row.Status != "published") {
-		return nil, errors.New("document not found")
+	if partnerID != nil {
+		if !row.IsPartnerVisible || row.Status != "published" || !row.AppliesToPartner(*partnerID) {
+			return nil, errors.New("document not found")
+		}
+		return row, nil
 	}
+	s.attachDocumentPartnerLabel(row)
 	return row, nil
 }
 

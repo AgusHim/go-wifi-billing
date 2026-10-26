@@ -9,6 +9,7 @@ import (
 	"github.com/Agushim/go_wifi_billing/dto"
 	middlewares "github.com/Agushim/go_wifi_billing/midlewares"
 	"github.com/Agushim/go_wifi_billing/models"
+	"github.com/Agushim/go_wifi_billing/repositories"
 	"github.com/Agushim/go_wifi_billing/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -420,8 +421,33 @@ func (c *PartnerController) GenerateRecurringDrafts(ctx *fiber.Ctx) error {
 	count, err := c.service.GenerateRecurringDrafts()
 	return respond(ctx, fiber.Map{"created": count}, err, "Recurring drafts generated")
 }
+
+// legalDocumentFilter builds the archive filter from the request query. The
+// archive is filtered per partner because each partner owns its own documents,
+// while documents without a partner apply to everyone.
+func legalDocumentFilter(ctx *fiber.Ctx) (repositories.LegalDocumentFilter, error) {
+	filter := repositories.LegalDocumentFilter{Category: strings.TrimSpace(ctx.Query("category"))}
+	switch scope := strings.TrimSpace(ctx.Query("partner_id")); {
+	case scope == "":
+		// No partner filter: return the whole archive.
+	case scope == "global" || scope == "unassigned":
+		filter.UnassignedOnly = true
+	default:
+		partnerID, err := uuid.Parse(scope)
+		if err != nil {
+			return filter, errors.New("invalid partner_id")
+		}
+		filter.PartnerID = &partnerID
+	}
+	return filter, nil
+}
+
 func (c *PartnerController) ListLegalDocuments(ctx *fiber.Ctx) error {
-	rows, err := c.service.ListLegalDocuments(nil, strings.TrimSpace(ctx.Query("category")))
+	filter, err := legalDocumentFilter(ctx)
+	if err != nil {
+		return badRequest(ctx, err)
+	}
+	rows, err := c.service.ListLegalDocuments(filter)
 	return respond(ctx, rows, err, "Success get legal documents")
 }
 func (c *PartnerController) CreateLegalDocument(ctx *fiber.Ctx) error {
@@ -541,11 +567,18 @@ func (c *PartnerController) GetMyAllocations(ctx *fiber.Ctx) error {
 	return respond(ctx, rows, err, "Success get allocations")
 }
 func (c *PartnerController) GetMyDocuments(ctx *fiber.Ctx) error {
-	if _, err := c.portalPartner(ctx); err != nil {
+	partner, err := c.portalPartner(ctx)
+	if err != nil {
 		return respond(ctx, nil, err, "")
 	}
+	// A partner only sees published documents shared with partners that either
+	// belong to that partner or apply to every partner.
 	visible := true
-	rows, err := c.service.ListLegalDocuments(&visible, "")
+	rows, err := c.service.ListLegalDocuments(repositories.LegalDocumentFilter{
+		PartnerVisible:    &visible,
+		PartnerID:         &partner.ID,
+		IncludeUnassigned: true,
+	})
 	return respond(ctx, rows, err, "Success get documents")
 }
 func (c *PartnerController) GetMyDocument(ctx *fiber.Ctx) error {

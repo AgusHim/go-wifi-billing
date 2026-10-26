@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agushim/go_wifi_billing/controllers"
 	"github.com/Agushim/go_wifi_billing/models"
@@ -69,7 +71,7 @@ func TestPartnerLoginAccountCanReachPortalDashboard(t *testing.T) {
 			}
 		}
 	}
-	grant(adminRole, "partners.read", "partners.manage")
+	grant(adminRole, "partners.read", "partners.manage", "partners.invoices.read", "partners.invoices.manage", "partners.documents.read", "partners.documents.manage")
 	grant(customerRole, "self.partner.read", "self.partner.payments.create")
 
 	staffPassword := "staff-password"
@@ -197,5 +199,94 @@ func TestPartnerLoginAccountCanReachPortalDashboard(t *testing.T) {
 	response, payload = post("/api/auth/login", "", map[string]string{"email": "sari@mitra-e2e.id", "password": tempPassword})
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("second account login status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+
+	// 7. Staff can add a bandwidth service and then build a manual invoice for it.
+	response, payload = post("/admin_api/partners/"+partnerID+"/services", staffToken, map[string]any{
+		"name": "Dedicated 100Mbps", "capacity": "100Mbps", "billing_mode": "fixed", "rate": 3000000, "due_day": 10,
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("create service status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	serviceID := payload["data"].(map[string]any)["id"].(string)
+
+	response, payload = post("/admin_api/partners/invoices", staffToken, map[string]any{
+		"partner_id": partnerID,
+		"due_date":   time.Now().AddDate(0, 0, 10).Format(time.RFC3339),
+		"lines": []map[string]any{
+			{
+				"description": "Dedicated 100Mbps - November 2026", "line_type": "bandwidth",
+				"quantity": 1, "unit": "bulan", "unit_price": 3000000,
+				"service_id": serviceID, "period_year": 2026, "period_month": 11,
+			},
+			{
+				"description": "Biaya instalasi", "line_type": "other",
+				"quantity": 1, "unit": "kali", "unit_price": 250000, "tax_amount": 27500,
+			},
+		},
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("create invoice status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	createdInvoice := payload["data"].(map[string]any)
+	if createdInvoice["status"] != "draft" {
+		t.Fatalf("new invoice status = %v, want draft", createdInvoice["status"])
+	}
+	if createdInvoice["total"].(float64) != 3277500 {
+		t.Fatalf("new invoice total = %v, want 3277500", createdInvoice["total"])
+	}
+	if !strings.HasPrefix(createdInvoice["number"].(string), "DRAFT-") {
+		t.Fatalf("draft number = %v, want a DRAFT- prefix", createdInvoice["number"])
+	}
+
+	// 8. The new draft shows up in the partner invoice list for staff.
+	response, payload = get("/admin_api/partners/invoices?partner_id="+partnerID, staffToken)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("list invoices status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	if len(payload["data"].([]any)) != 1 {
+		t.Fatalf("partner invoice count = %d, want 1", len(payload["data"].([]any)))
+	}
+
+	// 9. Legal documents are stored per partner, with global documents shared.
+	response, payload = post("/admin_api/partners/legal-documents", staffToken, map[string]any{
+		"name": "NIB Cantika", "file_path": "legal/nib.pdf", "status": "published", "is_partner_visible": true,
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("create global document status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	response, payload = post("/admin_api/partners/legal-documents", staffToken, map[string]any{
+		"name": "Perjanjian Mitra E2E", "file_path": "legal/mitra-e2e.pdf", "status": "published",
+		"is_partner_visible": true, "partner_id": partnerID,
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("create partner document status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	if payload["data"].(map[string]any)["partner_id"] != partnerID {
+		t.Fatalf("document partner_id = %v, want %s", payload["data"].(map[string]any)["partner_id"], partnerID)
+	}
+
+	// 10. The archive can be filtered per partner and per global scope.
+	response, payload = get("/admin_api/partners/legal-documents", staffToken)
+	if response.StatusCode != http.StatusOK || len(payload["data"].([]any)) != 2 {
+		t.Fatalf("unfiltered archive = %d (%v), want 2", len(payload["data"].([]any)), payload)
+	}
+	response, payload = get("/admin_api/partners/legal-documents?partner_id="+partnerID, staffToken)
+	if response.StatusCode != http.StatusOK || len(payload["data"].([]any)) != 1 {
+		t.Fatalf("partner archive = %d (%v), want 1", len(payload["data"].([]any)), payload)
+	}
+	response, payload = get("/admin_api/partners/legal-documents?partner_id=global", staffToken)
+	if response.StatusCode != http.StatusOK || len(payload["data"].([]any)) != 1 {
+		t.Fatalf("global archive = %d (%v), want 1", len(payload["data"].([]any)), payload)
+	}
+
+	// 11. The portal sees the partner document plus the global one, and nothing
+	// belonging to another partner.
+	response, payload = get("/partner_api/documents", partnerToken)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("portal documents status = %d, want 200 (%v)", response.StatusCode, payload)
+	}
+	if len(payload["data"].([]any)) != 2 {
+		t.Fatalf("portal document count = %d, want 2", len(payload["data"].([]any)))
 	}
 }

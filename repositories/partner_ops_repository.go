@@ -258,14 +258,23 @@ func (r *partnerRepository) FindDocument(id uuid.UUID) (*models.LegalDocument, e
 	return &row, err
 }
 
-func (r *partnerRepository) ListDocuments(partnerVisible *bool, category string) ([]models.LegalDocument, error) {
+func (r *partnerRepository) ListDocuments(filter LegalDocumentFilter) ([]models.LegalDocument, error) {
 	var rows []models.LegalDocument
 	query := r.db.Model(&models.LegalDocument{})
-	if partnerVisible != nil {
-		query = query.Where("is_partner_visible = ? AND status = ?", *partnerVisible, "published")
+	if filter.PartnerVisible != nil {
+		query = query.Where("is_partner_visible = ? AND status = ?", *filter.PartnerVisible, "published")
 	}
-	if category != "" {
-		query = query.Where("category = ?", category)
+	if filter.Category != "" {
+		query = query.Where("category = ?", filter.Category)
+	}
+	switch {
+	case filter.PartnerID != nil && filter.IncludeUnassigned:
+		// A partner sees its own documents plus the ones shared with everyone.
+		query = query.Where("partner_id = ? OR partner_id IS NULL", *filter.PartnerID)
+	case filter.PartnerID != nil:
+		query = query.Where("partner_id = ?", *filter.PartnerID)
+	case filter.UnassignedOnly:
+		query = query.Where("partner_id IS NULL")
 	}
 	err := query.Order("created_at DESC").Find(&rows).Error
 	return rows, err

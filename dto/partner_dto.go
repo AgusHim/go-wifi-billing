@@ -118,6 +118,10 @@ type LegalDocumentRequest struct {
 	Status           string     `json:"status"`
 	IsPartnerVisible bool       `json:"is_partner_visible"`
 	Notes            string     `json:"notes"`
+	// PartnerID assigns the document to one partner. Omit it on create to store
+	// a document that applies to every partner; send an empty string on update
+	// to turn a partner document back into a global one.
+	PartnerID *string `json:"partner_id"`
 }
 
 type PartnerPaymentRequest struct {

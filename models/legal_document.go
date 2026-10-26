@@ -8,9 +8,12 @@ import (
 )
 
 // LegalDocument is a Cantika.net legal/operational document that partners may
-// need. Visibility to partners is opt-in so nothing is exposed by accident.
+// need. A document either belongs to one partner or is global (PartnerID nil),
+// in which case it applies to every partner. Visibility to partners is opt-in
+// so nothing is exposed by accident.
 type LegalDocument struct {
 	ID               uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey"`
+	PartnerID        *uuid.UUID     `json:"partner_id" gorm:"type:uuid;index"`
 	Name             string         `json:"name" gorm:"type:varchar(255);not null"`
 	Category         string         `json:"category" gorm:"type:varchar(80);index"`
 	Version          string         `json:"version" gorm:"type:varchar(50)"`
@@ -26,6 +29,19 @@ type LegalDocument struct {
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `json:"deleted_at" gorm:"index"`
+	// PartnerName/PartnerCode are filled for listings only and are never
+	// persisted. An empty name marks a document that applies to all partners.
+	PartnerName string `json:"partner_name,omitempty" gorm:"-"`
+	PartnerCode string `json:"partner_code,omitempty" gorm:"-"`
+}
+
+// IsGlobal reports whether the document applies to every partner.
+func (d *LegalDocument) IsGlobal() bool { return d.PartnerID == nil }
+
+// AppliesToPartner reports whether the document belongs to the given partner or
+// applies to all partners.
+func (d *LegalDocument) AppliesToPartner(partnerID uuid.UUID) bool {
+	return d.PartnerID == nil || *d.PartnerID == partnerID
 }
 
 func (d *LegalDocument) BeforeCreate(_ *gorm.DB) error {

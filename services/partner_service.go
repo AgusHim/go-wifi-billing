@@ -56,7 +56,7 @@ type PartnerService interface {
 
 	CreateLegalDocument(dto.LegalDocumentRequest, uuid.UUID) (*models.LegalDocument, error)
 	UpdateLegalDocument(uuid.UUID, dto.LegalDocumentRequest) (*models.LegalDocument, error)
-	ListLegalDocuments(*bool, string) ([]models.LegalDocument, error)
+	ListLegalDocuments(repositories.LegalDocumentFilter) ([]models.LegalDocument, error)
 	GetLegalDocument(uuid.UUID, *uuid.UUID) (*models.LegalDocument, error)
 	DeleteLegalDocument(uuid.UUID) error
 
