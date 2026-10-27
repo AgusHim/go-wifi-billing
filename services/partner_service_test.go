@@ -840,3 +840,53 @@ func TestPartnerPayablesFilter(t *testing.T) {
 		t.Fatalf("archive lost the settled invoice: %d", len(all))
 	}
 }
+
+// TestPartnerCashPaymentMethod covers paying a partner invoice in cash, both as
+// a partner submission and as a staff-recorded settlement, and that the stored
+// method is normalised so reports group cash correctly.
+func TestPartnerCashPaymentMethod(t *testing.T) {
+	svc, _ := newPartnerTestService(t)
+	partner := createTestPartner(t, svc, "MITRA17")
+	actor := uuid.New()
+
+	service := createTestService(t, svc, partner.ID, "fixed", 800000)
+	invoice, err := svc.GenerateInvoiceForService(partner.ID, dto.PartnerInvoiceFromServiceRequest{ServiceID: service.ID.String(), PeriodYear: 2027, PeriodMonth: 2}, actor)
+	if err != nil {
+		t.Fatalf("generate invoice: %v", err)
+	}
+	if _, err := svc.IssueInvoice(invoice.ID, actor); err != nil {
+		t.Fatalf("issue invoice: %v", err)
+	}
+
+	// A partner can declare a cash payment and staff verifies it.
+	submitted, err := svc.SubmitPayment(invoice.ID, dto.PartnerPaymentRequest{Amount: 300000, Method: "Cash"}, actor)
+	if err != nil {
+		t.Fatalf("submit cash payment: %v", err)
+	}
+	if submitted.Method != "cash" {
+		t.Fatalf("method = %q, want the normalised value cash", submitted.Method)
+	}
+	if submitted.Status != "pending" {
+		t.Fatalf("status = %q, want pending", submitted.Status)
+	}
+	assertInvoiceState(t, svc, invoice.ID, "issued", 800000, 0)
+	if _, err := svc.VerifyPayment(submitted.ID, dto.PartnerPaymentVerificationRequest{Approve: true}, actor); err != nil {
+		t.Fatalf("verify cash payment: %v", err)
+	}
+	assertInvoiceState(t, svc, invoice.ID, "partially_paid", 500000, 300000)
+
+	// Staff settles the remainder in cash at the office.
+	recorded, err := svc.RecordPartnerPayment(partner.ID, dto.PartnerStaffPaymentRequest{
+		InvoiceID: invoice.ID.String(), Amount: 500000, Method: " CASH ", Reference: "KAS-002",
+	}, actor)
+	if err != nil {
+		t.Fatalf("record cash payment: %v", err)
+	}
+	if recorded.Method != "cash" {
+		t.Fatalf("method = %q, want cash", recorded.Method)
+	}
+	if recorded.Status != "verified" {
+		t.Fatalf("status = %q, want verified", recorded.Status)
+	}
+	assertInvoiceState(t, svc, invoice.ID, "paid", 0, 800000)
+}

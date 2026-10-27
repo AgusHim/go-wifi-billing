@@ -329,17 +329,21 @@ func TestPartnerLoginAccountCanReachPortalDashboard(t *testing.T) {
 		t.Fatalf("payables list = %d (%v), want 1", len(payload["data"].([]any)), payload)
 	}
 
-	// 13. The partner submits a payment with a transfer reference using a
-	// multipart form (the same request shape used when a proof file is attached).
+	// 13. The partner submits a cash payment using a multipart form (the same
+	// request shape used when a proof file is attached). The method is stored
+	// normalised so reports group cash correctly.
 	response, payload = postMultipart("/partner_api/invoices/"+invoiceID+"/payments", partnerToken, map[string]string{
-		"amount": "1000000", "method": "transfer", "reference": "BCA-9001", "idempotency_key": "portal-e2e-1",
+		"amount": "1000000", "method": "Cash", "reference": "KAS-9001", "idempotency_key": "portal-e2e-1",
 	})
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("portal multipart payment status = %d, want 200 (%v)", response.StatusCode, payload)
 	}
 	submitted := payload["data"].(map[string]any)
-	if submitted["status"] != "pending" || submitted["reference"] != "BCA-9001" {
-		t.Fatalf("portal payment = %+v, want a pending transfer reference", submitted)
+	if submitted["status"] != "pending" || submitted["reference"] != "KAS-9001" {
+		t.Fatalf("portal payment = %+v, want a pending cash reference", submitted)
+	}
+	if submitted["method"] != "cash" {
+		t.Fatalf("portal payment method = %v, want the normalised value cash", submitted["method"])
 	}
 	// A pending submission must not change the balance.
 	response, payload = get("/admin_api/partners/invoices/"+invoiceID, staffToken)

@@ -440,6 +440,12 @@ func (s *partnerService) ListInvoicesFiltered(filter repositories.PartnerInvoice
 	return s.repo.ListInvoicesFiltered(filter)
 }
 
+// normalizePaymentMethod keeps method values comparable across the portal and
+// the staff flows. Known values: transfer, cash, qris, lainnya.
+func normalizePaymentMethod(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
 // RecordPartnerPayment lets staff settle an invoice on behalf of a partner, for
 // example when cash or a bank transfer is received at the office. The record is
 // created and, unless auto_verify is disabled, settled in the same transaction
@@ -487,7 +493,7 @@ func (s *partnerService) RecordPartnerPayment(partnerID uuid.UUID, in dto.Partne
 		now := time.Now()
 		payment := models.PartnerPayment{
 			InvoiceID: invoice.ID, SubmittedByID: &actorID, SubmittedAt: now,
-			Amount: in.Amount, Method: strings.TrimSpace(in.Method), Reference: strings.TrimSpace(in.Reference),
+			Amount: in.Amount, Method: normalizePaymentMethod(in.Method), Reference: strings.TrimSpace(in.Reference),
 			ProofURL: strings.TrimSpace(in.ProofURL), IdempotencyKey: key,
 		}
 		if autoVerify {
@@ -562,7 +568,7 @@ func (s *partnerService) SubmitPayment(invoiceID uuid.UUID, in dto.PartnerPaymen
 	if key == "" {
 		key = "auto:" + uuid.NewString()
 	}
-	row := &models.PartnerPayment{InvoiceID: invoiceID, SubmittedByID: &submittedBy, SubmittedAt: time.Now(), Amount: in.Amount, Method: strings.TrimSpace(in.Method), Reference: strings.TrimSpace(in.Reference), ProofURL: strings.TrimSpace(in.ProofURL), Status: "pending", IdempotencyKey: key}
+	row := &models.PartnerPayment{InvoiceID: invoiceID, SubmittedByID: &submittedBy, SubmittedAt: time.Now(), Amount: in.Amount, Method: normalizePaymentMethod(in.Method), Reference: strings.TrimSpace(in.Reference), ProofURL: strings.TrimSpace(in.ProofURL), Status: "pending", IdempotencyKey: key}
 	if err := s.repo.CreatePayment(row); err != nil {
 		if key != "" {
 			if existing, findErr := s.repo.FindPaymentByIdempotencyKey(key); findErr == nil && existing != nil {
